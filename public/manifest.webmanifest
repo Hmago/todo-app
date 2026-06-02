@@ -2,8 +2,8 @@
   "name": "To Do",
   "short_name": "To Do",
   "description": "A local-first todo and learning planner with calendar, recurring tasks, reminders, focus timer and analytics.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": ".",
+  "scope": ".",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#1f1f1f",
@@ -11,19 +11,19 @@
   "categories": ["productivity", "education", "utilities"],
   "icons": [
     {
-      "src": "/pwa-icon.png",
+      "src": "pwa-icon.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-icon.png",
+      "src": "pwa-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-icon.png",
+      "src": "pwa-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

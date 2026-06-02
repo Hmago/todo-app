@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { asset } from './basePath';
 
 /**
  * Web-only PWA bootstrap. Injects the manifest link + install/meta tags into the
@@ -35,7 +36,7 @@ export function registerPWA(): void {
   ensure('link[rel="manifest"]', () => {
     const l = doc.createElement('link');
     l.rel = 'manifest';
-    l.href = '/manifest.webmanifest';
+    l.href = asset('/manifest.webmanifest');
     return l;
   });
   ensure('meta[name="theme-color"]', () => meta('theme-color', '#1f1f1f'));
@@ -48,7 +49,7 @@ export function registerPWA(): void {
   ensure('link[rel="apple-touch-icon"]', () => {
     const l = doc.createElement('link');
     l.rel = 'apple-touch-icon';
-    l.href = '/pwa-icon.png';
+    l.href = asset('/pwa-icon.png');
     return l;
   });
 
@@ -56,7 +57,9 @@ export function registerPWA(): void {
   // in case notifications are unsupported, so install/offline still work.
   const nav: any = g.navigator;
   if (nav && 'serviceWorker' in nav) {
-    nav.serviceWorker.register('/service-worker.js').catch(() => undefined);
+    nav.serviceWorker
+      .register(asset('/service-worker.js'), { scope: asset('/') })
+      .catch(() => undefined);
   }
 }
 

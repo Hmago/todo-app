@@ -6,7 +6,10 @@
  * VAPID) and is intentionally out of scope for this local-first app.
  */
 const CACHE = 'learnplan-pwa-v1';
-const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/pwa-icon.png', '/favicon.png'];
+// Resolve against the SW script location so paths work under a subpath (e.g.
+// GitHub Pages /todo-app/) as well as at the domain root.
+const u = (p) => new URL(p, self.location.href).toString();
+const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './pwa-icon.png', './favicon.png'].map(u);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -53,7 +56,7 @@ self.addEventListener('fetch', (event) => {
         const cached = await cache.match(req);
         if (cached) return cached;
         if (req.mode === 'navigate') {
-          const shell = (await cache.match('/')) || (await cache.match('/index.html'));
+          const shell = (await cache.match(u('./'))) || (await cache.match(u('./index.html')));
           if (shell) return shell;
         }
         throw err;
@@ -68,7 +71,7 @@ self.addEventListener('message', (event) => {
   if (data.type === 'show-notification') {
     self.registration.showNotification(data.title || 'Reminder', {
       body: data.body || '',
-      icon: '/pwa-icon.png',
+      icon: u('./pwa-icon.png'),
       tag: data.tag,
     });
   }
@@ -81,7 +84,7 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of clientList) {
         if ('focus' in client) return client.focus();
       }
-      if (self.clients.openWindow) return self.clients.openWindow('/');
+      if (self.clients.openWindow) return self.clients.openWindow(u('./'));
       return undefined;
     }),
   );

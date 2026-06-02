@@ -4,7 +4,10 @@
 // server + VAPID keys), which is out of scope for this local-first app. Here the
 // service worker improves foreground/PWA display and notification clicks.
 
+import { asset } from './basePath';
+
 export type PermissionState = 'granted' | 'denied' | 'default' | 'unsupported';
+
 
 let swReg: ServiceWorkerRegistration | null = null;
 
@@ -36,7 +39,7 @@ export function initNotifications(): void {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   if (swReg) return;
   navigator.serviceWorker
-    .register('/service-worker.js')
+    .register(asset('/service-worker.js'), { scope: asset('/') })
     .then((reg) => {
       swReg = reg;
     })
@@ -50,11 +53,11 @@ export function showSystemNotification(title: string, body?: string): void {
   if (!hasNotificationApi() || Notification.permission !== 'granted') return;
   try {
     if (swReg) {
-      swReg.showNotification(title, { body, icon: '/favicon.ico', tag: title });
+      swReg.showNotification(title, { body, icon: asset('/pwa-icon.png'), tag: title });
       return;
     }
     // eslint-disable-next-line no-new
-    new Notification(title, { body, icon: '/favicon.ico' });
+    new Notification(title, { body, icon: asset('/pwa-icon.png') });
   } catch {
     /* ignore */
   }
