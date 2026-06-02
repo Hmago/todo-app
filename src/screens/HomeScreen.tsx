@@ -9,6 +9,7 @@ export type Route =
   | 'tasks'
   | 'learning'
   | 'analytics'
+  | 'motivation'
   | 'log'
   | 'search'
   | 'settings'
@@ -155,6 +156,7 @@ export function HomeScreen({
       <Text style={styles.sectionLabel}>Plan & track</Text>
       <View style={styles.group}>
         <Row icon="📚" color={listThemes.learning.accent} label="Learning goals" onPress={() => onNavigate('learning')} />
+        <Row icon="🌟" color={listThemes.motivation.accent} label="Motivation" onPress={() => onNavigate('motivation')} />
         <Row icon="📝" color={listThemes.log.accent} label="Daily log" onPress={() => onNavigate('log')} />
         <Row icon="📊" color={listThemes.stats.accent} label="Analytics" onPress={() => onNavigate('analytics')} />
         <Row icon="⚙️" color={colors.textDim} label="Lists & settings" onPress={() => onNavigate('settings')} />

@@ -44,6 +44,7 @@ export const listThemes: Record<string, ListTheme> = {
   search: { key: 'search', accent: '#9aa4b2', gradient: ['#374151', '#6b7280'] },
   stats: { key: 'stats', accent: '#6ca0ff', gradient: ['#1f3f8f', '#3a6fd1'] },
   log: { key: 'log', accent: '#ff7a93', gradient: ['#8a2342', '#c25b6e'] },
+  motivation: { key: 'motivation', accent: '#f5c542', gradient: ['#8a6a16', '#d1a83f'] },
   settings: { key: 'settings', accent: '#9aa4b2', gradient: ['#374151', '#6b7280'] },
 };
 

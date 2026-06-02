@@ -18,6 +18,7 @@ import { PlannedScreen } from './src/screens/PlannedScreen';
 import { CalendarScreen } from './src/screens/CalendarScreen';
 import { LearningScreen } from './src/screens/LearningScreen';
 import { AnalyticsScreen } from './src/screens/AnalyticsScreen';
+import { MotivationScreen } from './src/screens/MotivationScreen';
 import { DailyLogScreen } from './src/screens/DailyLogScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
@@ -95,6 +96,8 @@ export default function App() {
           return <LearningScreen onBack={onBack} />;
         case 'analytics':
           return <AnalyticsScreen onBack={onBack} />;
+        case 'motivation':
+          return <MotivationScreen onBack={onBack} />;
         case 'log':
           return <DailyLogScreen onBack={onBack} />;
         case 'search':

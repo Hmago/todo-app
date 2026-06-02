@@ -14,6 +14,7 @@ export type NavKey =
   | 'log'
   | 'learning'
   | 'analytics'
+  | 'motivation'
   | 'search'
   | 'settings'
   | `category:${string}`;
@@ -102,6 +103,7 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
 
         <NavItem icon="📝" label="Daily Log" active={active === 'log'} onPress={() => onSelect('log')} />
         <NavItem icon="📚" label="Learning goals" active={active === 'learning'} onPress={() => onSelect('learning')} />
+        <NavItem icon="🌟" label="Motivation" active={active === 'motivation'} onPress={() => onSelect('motivation')} />
         <NavItem icon="📊" label="Analytics" active={active === 'analytics'} onPress={() => onSelect('analytics')} />
 
         <View style={styles.divider} />
