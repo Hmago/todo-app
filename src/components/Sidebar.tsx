@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
-import { colors, radius, spacing, fontFamily, CATEGORY_COLORS } from '../theme';
+import { radius, spacing, fontFamily, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { todayKey } from '../lib/dates';
 import { occursOn, isOccurrenceDone } from '../lib/recurrence';
@@ -34,6 +34,7 @@ function NavItem({
   color?: string;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -54,6 +55,8 @@ function NavItem({
 }
 
 export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: NavKey) => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const tasks = useStore((s) => s.tasks);
   const categories = useStore((s) => s.categories);
   const addCategory = useStore((s) => s.addCategory);
@@ -177,7 +180,7 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   sidebar: {
     width: 290,
     backgroundColor: colors.sidebar,

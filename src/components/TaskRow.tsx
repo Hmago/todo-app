@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, PanResponder, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Task } from '../types';
-import { colors, radius, spacing, fontFamily, shadow } from '../theme';
+import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { pretty12h, prettyDate, prettyReminder, prettyDuration } from '../lib/dates';
 import { recurrenceLabel } from '../lib/recurrence';
 import { useStore } from '../store/useStore';
@@ -41,6 +41,7 @@ export function TaskRow({
   isFirst?: boolean;
   isLast?: boolean;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const category = useStore((s) => s.categories.find((c) => c.id === task.categoryId));
   const toggleImportant = useStore((s) => s.toggleImportant);
 
@@ -164,7 +165,7 @@ export function TaskRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   wrap: { marginBottom: spacing(1), borderRadius: radius.md, overflow: 'hidden' },
   actionLayer: {
     position: 'absolute',

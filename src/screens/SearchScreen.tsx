@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable } from 'react-native';
-import { colors, radius, spacing, fontFamily, shadow } from '../theme';
+import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 import { useSavedFilters, SearchStatus } from '../store/useSavedFilters';
@@ -47,6 +47,8 @@ function matchesPreset(t: Task, preset: Preset, today: string): boolean {
 }
 
 export function SearchScreen({ onBack }: { onBack?: () => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const tasks = useStore((s) => s.tasks);
   const categories = useStore((s) => s.categories);
   const toggleComplete = useStore((s) => s.toggleComplete);
@@ -217,7 +219,7 @@ export function SearchScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing(1.5) },
   search: {

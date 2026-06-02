@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, PanResponder } from 'react-native';
-import { colors, radius, spacing, fontFamily, shadow, listThemes } from '../theme';
+import { radius, spacing, fontFamily, shadow, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 import { TaskRow } from '../components/TaskRow';
@@ -45,6 +45,8 @@ type RepeatFilter = 'all' | 'recurring' | 'once';
 const ACCENT = listThemes.calendar.accent;
 
 export function CalendarScreen({ onBack }: { onBack?: () => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [view, setView] = useState<ViewMode>('month');
   const [month, setMonth] = useState(startOfMonth(new Date()));
   const [selected, setSelected] = useState(todayKey());
@@ -461,6 +463,7 @@ function DragRow({
   onDrop: (x: number, y: number) => void;
   children: React.ReactNode;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -484,7 +487,7 @@ function DragRow({
 
 const CELL = `${100 / 7}%`;
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing(1.5) },
   toolbar: {

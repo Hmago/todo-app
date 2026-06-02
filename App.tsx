@@ -10,7 +10,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { colors, spacing, fontFamily } from './src/theme';
+import { spacing, fontFamily, useThemedStyles, Palette } from './src/theme';
+import { ThemeProvider, useResolvedTheme } from './src/components/ThemeProvider';
 import { HomeScreen, Route } from './src/screens/HomeScreen';
 import { MyDayScreen } from './src/screens/MyDayScreen';
 import { ImportantScreen } from './src/screens/ImportantScreen';
@@ -44,11 +45,14 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
 
 const DESKTOP_MIN = 820;
 
-export default function App() {
+function AppInner() {
   const [tab, setTab] = useState<Tab>('home');
   const [sub, setSub] = useState<Route | null>(null);
   const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_MIN;
+  const styles = useThemedStyles(makeStyles);
+  const { isDark } = useResolvedTheme();
+  const statusBarStyle = isDark ? 'light' : 'dark';
 
   const editorVisible = useUI((s) => s.editorVisible);
   const editing = useUI((s) => s.editing);
@@ -124,7 +128,7 @@ export default function App() {
   if (isDesktop) {
     return (
       <SafeAreaView style={styles.root}>
-        <StatusBar style="light" />
+      <StatusBar style={statusBarStyle} />
         <View style={styles.desktopRow}>
           <Sidebar active={activeKey} onSelect={select} />
           <View style={styles.desktopContent}>{renderContent(true)}</View>
@@ -138,7 +142,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar style="light" />
+      <StatusBar style={statusBarStyle} />
       {tab === 'home' && !sub ? (
         <View style={styles.homeHeader}>
           <Text style={styles.brand}>To Do</Text>
@@ -166,7 +170,15 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
+  );
+}
+
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.bg,

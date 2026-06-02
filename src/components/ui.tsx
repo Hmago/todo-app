@@ -8,13 +8,15 @@ import {
   TextStyle,
   StyleProp,
 } from 'react-native';
-import { colors, radius, spacing, fontFamily, shadow } from '../theme';
+import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const styles = useThemedStyles(makeStyles);
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
 export function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.sectionRow}>
       <Text style={styles.sectionTitle}>{children}</Text>
@@ -36,6 +38,8 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   small?: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const bg =
     variant === 'primary' ? colors.primary : variant === 'danger' ? colors.danger : 'transparent';
   const border = variant === 'ghost' ? colors.border : 'transparent';
@@ -66,6 +70,8 @@ export function Chip({
   active?: boolean;
   onPress?: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -84,6 +90,8 @@ export function Chip({
 }
 
 export function ProgressBar({ value, color }: { value: number; color?: string }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const pct = Math.max(0, Math.min(1, value));
   return (
     <View style={styles.progressTrack}>
@@ -93,6 +101,7 @@ export function ProgressBar({ value, color }: { value: number; color?: string })
 }
 
 export function EmptyState({ icon, title, subtitle }: { icon?: string; title: string; subtitle?: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.empty}>
       {icon ? <Text style={styles.emptyIcon}>{icon}</Text> : null}
@@ -103,10 +112,11 @@ export function EmptyState({ icon, title, subtitle }: { icon?: string; title: st
 }
 
 export function Label({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
+  const styles = useThemedStyles(makeStyles);
   return <Text style={[styles.label, style]}>{children}</Text>;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

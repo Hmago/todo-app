@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Task } from '../types';
 import { DeviceEvent } from '../lib/calendarSync';
-import { colors, radius, spacing, fontFamily } from '../theme';
+import { radius, spacing, fontFamily, useTheme, useThemedStyles, Palette } from '../theme';
 import { minutesOfDay, pretty12h, prettyDuration, todayKey } from '../lib/dates';
 import { useStore } from '../store/useStore';
 import { isOccurrenceDone } from '../lib/recurrence';
@@ -86,6 +86,8 @@ export function DayTimeline({
   onCreateAt: (time: string) => void;
   accent: string;
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const categories = useStore((s) => s.categories);
   const catColor = (id?: string) => categories.find((c) => c.id === id)?.color ?? accent;
 
@@ -246,7 +248,7 @@ export function DayTimeline({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   wrap: { flex: 1 },
   allDayBar: {
     flexDirection: 'row',

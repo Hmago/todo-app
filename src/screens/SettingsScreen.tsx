@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Switch, Modal } from 'react-native';
-import { colors, radius, spacing, fontFamily, shadow, CATEGORY_COLORS } from '../theme';
+import { radius, spacing, fontFamily, shadow, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { useSettings } from '../store/useSettings';
 import { useOnboarding } from '../store/useOnboarding';
+import { useThemePref } from '../store/useThemePref';
+import type { ThemeMode } from '../theme';
 import { ListHeader } from '../components/ListHeader';
 import { Button, Card, EmptyState, SectionTitle } from '../components/ui';
 import {
@@ -24,11 +26,15 @@ import {
 } from '../lib/notifications';
 
 export function SettingsScreen({ onBack }: { onBack?: () => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const categories = useStore((s) => s.categories);
   const tasks = useStore((s) => s.tasks);
   const addCategory = useStore((s) => s.addCategory);
   const deleteCategory = useStore((s) => s.deleteCategory);
   const settings = useSettings();
+  const themeMode = useThemePref((s) => s.mode);
+  const setThemeMode = useThemePref((s) => s.setMode);
   const replayTour = useOnboarding((s) => s.replay);
 
   const [name, setName] = useState('');
@@ -115,6 +121,29 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
     <View style={styles.screen}>
       <ListHeader themeKey="settings" icon="⚙️" title="Lists & settings" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <SectionTitle>Appearance</SectionTitle>
+        <Card style={{ marginBottom: spacing(2) }}>
+          <Text style={styles.toggleTitle}>Theme</Text>
+          <Text style={[styles.permStatus, { marginBottom: spacing(1.5) }]}>
+            Choose light, dark, or follow your device.
+          </Text>
+          <View style={styles.segWrap}>
+            {(['system', 'light', 'dark'] as ThemeMode[]).map((m) => {
+              const active = themeMode === m;
+              const label = m === 'system' ? '⚙️ System' : m === 'light' ? '☀️ Light' : '🌙 Dark';
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => setThemeMode(m)}
+                  style={[styles.segBtn, active && styles.segBtnActive]}
+                >
+                  <Text style={[styles.segText, active && styles.segTextActive]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+
         <SectionTitle>Notifications</SectionTitle>
         <Card style={{ marginBottom: spacing(2) }}>
           <View style={styles.toggleRow}>
@@ -350,9 +379,22 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing(1.5) },
+  segWrap: { flexDirection: 'row', gap: spacing(1) },
+  segBtn: {
+    flex: 1,
+    paddingVertical: spacing(1.25),
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+  },
+  segBtnActive: { borderColor: colors.primary, backgroundColor: colors.primary + '22' },
+  segText: { color: colors.textDim, fontSize: 13, fontWeight: '600', fontFamily },
+  segTextActive: { color: colors.primary, fontWeight: '800' },
   input: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.sm,

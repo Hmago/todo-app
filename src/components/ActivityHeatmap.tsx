@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { colors, radius, spacing, fontFamily } from '../theme';
+import { radius, spacing, fontFamily, useTheme, useThemedStyles, Palette } from '../theme';
 import { DayStat, activityLevel } from '../lib/analytics';
 import { fromKey, prettyDate, prettyDuration } from '../lib/dates';
 import { startOfWeek, format } from 'date-fns';
@@ -10,6 +10,7 @@ const CELL = 13;
 const GAP = 3;
 
 function HeatCell({ day, accent }: { day: DayStat | undefined; accent: string }) {
+  const styles = useThemedStyles(makeStyles);
   const [hover, setHover] = useState(false);
   if (!day) return <View style={{ width: CELL, height: CELL, margin: GAP / 2 }} />;
   const level = activityLevel(day);
@@ -37,7 +38,10 @@ function HeatCell({ day, accent }: { day: DayStat | undefined; accent: string })
   );
 }
 
-export function ActivityHeatmap({ days, accent = colors.success }: { days: DayStat[]; accent?: string }) {
+export function ActivityHeatmap({ days, accent }: { days: DayStat[]; accent?: string }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const acc = accent ?? colors.success;
   const { columns, monthLabels } = useMemo(() => {
     if (days.length === 0) return { columns: [] as (DayStat | undefined)[][], monthLabels: [] as { col: number; label: string }[] };
     const byKey = new Map(days.map((d) => [d.key, d]));
@@ -86,7 +90,7 @@ export function ActivityHeatmap({ days, accent = colors.success }: { days: DaySt
         {columns.map((column, ci) => (
           <View key={ci} style={styles.column}>
             {column.map((d, ri) => (
-              <HeatCell key={ri} day={d} accent={accent} />
+              <HeatCell key={ri} day={d} accent={acc} />
             ))}
           </View>
         ))}
@@ -102,7 +106,7 @@ export function ActivityHeatmap({ days, accent = colors.success }: { days: DaySt
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   monthRow: { height: 16, position: 'relative' },
   monthLabel: { position: 'absolute', color: colors.textDim, fontSize: 10, fontFamily },
   grid: { flexDirection: 'row' },

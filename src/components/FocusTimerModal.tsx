@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
-import { colors, radius, spacing, fontFamily } from '../theme';
+import { radius, spacing, fontFamily, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button } from './ui';
 import { useStore } from '../store/useStore';
 import { showSystemNotification } from '../lib/notifications';
@@ -17,7 +17,7 @@ export function FocusTimerModal({
   visible,
   goalId,
   goalTitle,
-  accent = colors.primary,
+  accent,
   onClose,
 }: {
   visible: boolean;
@@ -26,6 +26,9 @@ export function FocusTimerModal({
   accent?: string;
   onClose: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const acc = accent ?? colors.primary;
   const logStudySession = useStore((s) => s.logStudySession);
 
   const [minutes, setMinutes] = useState(25);
@@ -108,16 +111,16 @@ export function FocusTimerModal({
               <Pressable
                 key={m}
                 onPress={() => pickPreset(m)}
-                style={[styles.preset, minutes === m && { borderColor: accent, backgroundColor: accent + '22' }]}
+                style={[styles.preset, minutes === m && { borderColor: acc, backgroundColor: acc + '22' }]}
               >
-                <Text style={[styles.presetText, minutes === m && { color: accent, fontWeight: '800' }]}>{m}m</Text>
+                <Text style={[styles.presetText, minutes === m && { color: acc, fontWeight: '800' }]}>{m}m</Text>
               </Pressable>
             ))}
           </View>
 
           <Text style={[styles.timer, { color: completed ? colors.success : colors.text }]}>{fmt(secondsLeft)}</Text>
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${Math.min(100, progress * 100)}%`, backgroundColor: accent }]} />
+            <View style={[styles.progressFill, { width: `${Math.min(100, progress * 100)}%`, backgroundColor: acc }]} />
           </View>
 
           {completed ? (
@@ -150,7 +153,7 @@ export function FocusTimerModal({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -201,3 +204,4 @@ const styles = StyleSheet.create({
   doneBtn: { paddingVertical: spacing(1.5), marginTop: spacing(0.5) },
   doneText: { color: colors.textDim, fontSize: 14, fontWeight: '700', fontFamily },
 });
+

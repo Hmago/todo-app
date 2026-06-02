@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { colors, spacing, radius, fontFamily, shadow } from '../theme';
+import { spacing, radius, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { useOnboarding } from '../store/useOnboarding';
 
 interface Slide {
@@ -45,6 +45,7 @@ const SLIDES: Slide[] = [
 ];
 
 export function OnboardingOverlay() {
+  const styles = useThemedStyles(makeStyles);
   const seen = useOnboarding((s) => s.seen);
   const hydrated = useOnboarding((s) => s.hydrated);
   const complete = useOnboarding((s) => s.complete);
@@ -96,7 +97,7 @@ export function OnboardingOverlay() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

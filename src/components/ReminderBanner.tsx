@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { colors, spacing, radius, shadow } from '../theme';
+import { spacing, radius, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { prettyReminder } from '../lib/dates';
 import { RemindersApi } from '../lib/useReminders';
 
 export default function ReminderBanner({ due, dismiss, complete, snooze }: RemindersApi) {
+  const styles = useThemedStyles(makeStyles);
   if (due.length === 0) return null;
   const item = due[0];
   const { task, reminder } = item;
@@ -43,7 +44,7 @@ export default function ReminderBanner({ due, dismiss, complete, snooze }: Remin
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: spacing(2),

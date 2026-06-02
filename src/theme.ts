@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
+import { createContext, useContext, useMemo } from 'react';
 
-// Microsoft To Do (desktop) inspired dark theme
-export const colors = {
+// Microsoft To Do (desktop) inspired themes.
+export const darkColors = {
   bg: '#1f1f1f',          // main content background
   surface: '#2c2c2c',     // rows / cards / add bar
   surfaceAlt: '#383838',  // subtle fill / hover
@@ -20,6 +21,49 @@ export const colors = {
   white: '#ffffff',
   onAccent: '#ffffff',
 };
+
+export type Palette = typeof darkColors;
+
+export const lightColors: Palette = {
+  bg: '#faf9f8',
+  surface: '#ffffff',
+  surfaceAlt: '#f0eff0',
+  border: '#e1dfdd',
+  sidebar: '#f3f2f1',
+  sidebarActive: '#e7e6e5',
+  text: '#1b1a19',
+  textDim: '#4b4a48',
+  textFaint: '#8a8886',
+  primary: '#2564cf',
+  primaryDim: '#cfe0fb',
+  success: '#4a9c3f',
+  warning: '#bd6f00',
+  danger: '#d13438',
+  star: '#d9a300',
+  white: '#ffffff',
+  onAccent: '#ffffff',
+};
+
+export type ThemeMode = 'system' | 'light' | 'dark';
+
+// Active palette is provided via context so styles can rebuild on theme change.
+export const ThemeContext = createContext<Palette>(darkColors);
+
+/** Current theme palette. Use inside components for JSX color values. */
+export function useTheme(): Palette {
+  return useContext(ThemeContext);
+}
+
+/**
+ * Build a StyleSheet from the active palette, memoized per theme. Define styles
+ * as `const makeStyles = (colors: Palette) => StyleSheet.create({ ... })` and call
+ * `const styles = useThemedStyles(makeStyles)` inside the component.
+ */
+export function useThemedStyles<T>(factory: (colors: Palette) => T): T {
+  const colors = useTheme();
+  return useMemo(() => factory(colors), [colors, factory]);
+}
+
 
 export const priorityColor: Record<string, string> = {
   low: '#6ccb5f',

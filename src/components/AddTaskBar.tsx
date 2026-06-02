@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
-import { colors, radius, spacing, fontFamily, shadow } from '../theme';
+import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { Category } from '../types';
 import { parseQuickAdd, describeParse } from '../lib/quickAdd';
 
@@ -17,6 +17,8 @@ export function AddTaskBar({
   onExpand?: () => void;
   categories?: Category[];
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [value, setValue] = useState('');
 
   const preview = useMemo(() => {
@@ -69,7 +71,7 @@ export function AddTaskBar({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   wrap: {
     paddingHorizontal: spacing(3),
     paddingTop: spacing(1),

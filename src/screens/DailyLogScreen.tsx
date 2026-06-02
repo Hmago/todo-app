@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { addDays } from 'date-fns';
-import { colors, radius, spacing, fontFamily, shadow, listThemes } from '../theme';
+import { radius, spacing, fontFamily, shadow, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { ListHeader } from '../components/ListHeader';
 import { AddTaskBar } from '../components/AddTaskBar';
@@ -11,6 +11,7 @@ import { fromKey, toKey, todayKey, prettyDate } from '../lib/dates';
 const ACCENT = listThemes.log.accent;
 
 export function DailyLogScreen({ onBack }: { onBack?: () => void }) {
+  const styles = useThemedStyles(makeStyles);
   const [selected, setSelected] = useState(todayKey());
   const logs = useStore((s) => s.logs);
   const tasks = useStore((s) => s.tasks);
@@ -97,7 +98,7 @@ export function DailyLogScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   dateNav: {
     flexDirection: 'row',

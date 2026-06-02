@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { Task, Priority, RecurrenceFreq, ItemType, RecurrenceRule, Subtask, TaskLink } from '../types';
-import { colors, radius, spacing } from '../theme';
+import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
 import { todayKey, toKey, fromKey, toLocalIso, prettyReminder, prettyDuration } from '../lib/dates';
 import { WEEKDAY_ABBR } from '../lib/recurrence';
@@ -57,6 +57,8 @@ export function TaskEditorModal({
   seed?: DraftSeed;
   onClose: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const categories = useStore((s) => s.categories);
   const goals = useStore((s) => s.goals);
   const addTask = useStore((s) => s.addTask);
@@ -619,7 +621,7 @@ export function TaskEditorModal({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.bg,

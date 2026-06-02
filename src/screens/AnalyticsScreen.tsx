@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { colors, radius, spacing, fontFamily, listThemes, CATEGORY_COLORS } from '../theme';
+import { radius, spacing, fontFamily, listThemes, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { Card, ProgressBar, SectionTitle, Button } from '../components/ui';
 import { ListHeader } from '../components/ListHeader';
@@ -37,6 +37,8 @@ const RANGES: { key: RangeKey; label: string; days: number }[] = [
 ];
 
 export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const tasks = useStore((s) => s.tasks);
   const categories = useStore((s) => s.categories);
   const goals = useStore((s) => s.goals);
@@ -421,6 +423,7 @@ function escapeHtml(s: string): string {
 }
 
 function Kpi({ label, value, color }: { label: string; value: string; color: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Card style={styles.kpi}>
       <Text style={[styles.kpiValue, { color }]}>{value}</Text>
@@ -429,7 +432,7 @@ function Kpi({ label, value, color }: { label: string; value: string; color: str
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing(2) },
   notice: {

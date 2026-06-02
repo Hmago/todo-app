@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
-import { colors, radius, spacing, fontFamily, shadow, listThemes, CATEGORY_COLORS } from '../theme';
+import { radius, spacing, fontFamily, shadow, listThemes, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { todayKey } from '../lib/dates';
 import { occursOn, isOccurrenceDone } from '../lib/recurrence';
@@ -28,6 +28,7 @@ function Row({
   count?: number;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <View style={[styles.iconWrap, { backgroundColor: color + '1f' }]}>
@@ -41,6 +42,8 @@ function Row({
 }
 
 function NewListRow({ onCreate }: { onCreate: (id: string) => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const addCategory = useStore((s) => s.addCategory);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -112,6 +115,8 @@ export function HomeScreen({
   onNavigate: (route: Route) => void;
   onOpenSmart: (tab: 'myday' | 'important' | 'planned' | 'calendar') => void;
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const tasks = useStore((s) => s.tasks);
   const categories = useStore((s) => s.categories);
   const today = todayKey();
@@ -166,7 +171,7 @@ export function HomeScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing(1.5) },
   search: {

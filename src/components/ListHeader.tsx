@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { colors, spacing, fontFamily, listThemes } from '../theme';
+import { spacing, fontFamily, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 
 export function ListHeader({
   themeKey,
@@ -20,6 +20,7 @@ export function ListHeader({
   right?: React.ReactNode;
   gradient?: [string, string];
 }) {
+  const styles = useThemedStyles(makeStyles);
   const theme = listThemes[themeKey] ?? listThemes.tasks;
   return (
     <View style={styles.wrap}>
@@ -41,7 +42,7 @@ export function ListHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   wrap: {
     paddingTop: spacing(2),
     paddingBottom: spacing(1.5),

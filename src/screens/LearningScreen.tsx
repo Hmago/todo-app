@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Linking } from 'react-native';
-import { colors, radius, spacing, fontFamily, listThemes } from '../theme';
+import { radius, spacing, fontFamily, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 import { LearningGoal, ResourceKind } from '../types';
@@ -26,7 +26,7 @@ import { addDays } from 'date-fns';
 const ACCENT = listThemes.learning.accent;
 const RES_KINDS: ResourceKind[] = ['course', 'book', 'video', 'article', 'link'];
 
-function countdownLabel(days: number | null): { text: string; color: string } | null {
+function countdownLabel(days: number | null, colors: Palette): { text: string; color: string } | null {
   if (days == null) return null;
   if (days < 0) return { text: `${Math.abs(days)}d overdue`, color: colors.danger };
   if (days === 0) return { text: 'Due today', color: colors.warning };
@@ -35,6 +35,8 @@ function countdownLabel(days: number | null): { text: string; color: string } | 
 }
 
 function GoalCard({ goal, onFocus }: { goal: LearningGoal; onFocus: (g: LearningGoal) => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const category = useStore((s) => s.categories.find((c) => c.id === goal.categoryId));
   const studySessions = useStore((s) => s.studySessions);
   const toggleMilestone = useStore((s) => s.toggleMilestone);
@@ -57,7 +59,7 @@ function GoalCard({ goal, onFocus }: { goal: LearningGoal; onFocus: (g: Learning
 
   const totalMin = minutesForGoal(studySessions, goal.id);
   const sessions = sessionCountForGoal(studySessions, goal.id);
-  const countdown = countdownLabel(daysUntil(goal.targetDate));
+  const countdown = countdownLabel(daysUntil(goal.targetDate), colors);
   const reviewDue = isReviewDue(goal);
   const reviewIn = daysUntilReview(goal);
   const resources = goal.resources ?? [];
@@ -239,6 +241,8 @@ function GoalCard({ goal, onFocus }: { goal: LearningGoal; onFocus: (g: Learning
 }
 
 export function LearningScreen({ onBack }: { onBack?: () => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const goals = useStore((s) => s.goals);
   const tasks = useStore((s) => s.tasks);
   const studySessions = useStore((s) => s.studySessions);
@@ -307,7 +311,7 @@ export function LearningScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing(1.5) },
   headerAdd: { color: colors.primary, fontSize: 15, fontWeight: '700', fontFamily },

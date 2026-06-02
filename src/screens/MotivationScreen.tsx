@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from 'react-native';
-import { colors, radius, spacing, fontFamily, shadow, listThemes } from '../theme';
+import { radius, spacing, fontFamily, shadow, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 import { ListHeader } from '../components/ListHeader';
 import { Chip, EmptyState } from '../components/ui';
 import { todayKey } from '../lib/dates';
@@ -39,6 +39,7 @@ function QuoteCard({
   onCopy: () => void;
   copied: boolean;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const meta = categoryMeta(quote.category);
   return (
     <View style={styles.card}>
@@ -62,6 +63,8 @@ function QuoteCard({
 }
 
 export function MotivationScreen({ onBack }: { onBack?: () => void }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const favorites = useMotivation((s) => s.favorites);
   const toggleFavorite = useMotivation((s) => s.toggleFavorite);
 
@@ -198,7 +201,7 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   content: { paddingHorizontal: spacing(3), paddingTop: spacing(0.5) },

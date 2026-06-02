@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Task } from '../types';
-import { colors, spacing, fontFamily, listThemes } from '../theme';
+import { spacing, fontFamily, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 import { ListHeader } from './ListHeader';
 import { AddTaskBar } from './AddTaskBar';
 import { TaskRow } from './TaskRow';
@@ -50,6 +50,7 @@ export function TaskListView({
   onBack?: () => void;
   onReorder?: (taskId: string, dir: 'up' | 'down') => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const theme = listThemes[themeKey] ?? listThemes.tasks;
   const accent = accentOverride ?? theme.accent;
   const toggleComplete = useStore((s) => s.toggleComplete);
@@ -138,7 +139,7 @@ export function TaskListView({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1 },
   content: { paddingHorizontal: spacing(3), paddingTop: spacing(0.5), paddingBottom: spacing(1.5) },

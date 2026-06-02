@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { LearningGoal } from '../types';
-import { colors, radius, spacing } from '../theme';
+import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
 import { todayKey } from '../lib/dates';
 import { nextSrDate } from '../lib/study';
@@ -27,6 +27,8 @@ export function GoalEditorModal({
   editing?: LearningGoal | null;
   onClose: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const categories = useStore((s) => s.categories);
   const addGoal = useStore((s) => s.addGoal);
   const updateGoal = useStore((s) => s.updateGoal);
@@ -166,7 +168,7 @@ export function GoalEditorModal({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.bg,
