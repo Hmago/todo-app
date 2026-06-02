@@ -1,13 +1,14 @@
 {
   "expo": {
-    "name": "todo_app",
-    "slug": "todo_app",
+    "name": "To Do",
+    "slug": "learnplan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.learnplan.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -20,6 +21,20 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png"
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "To Do needs calendar access to sync your tasks with your device calendar."
+        }
+      ]
+    ]
   }
 }
