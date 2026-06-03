@@ -20,6 +20,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "gh-pages": "^6.3.0",
     "typescript": "~6.0.3"
   },
@@ -30,7 +32,42 @@
     "web": "expo start --web",
     "build:web": "expo export --platform web --output-dir dist",
     "predeploy": "npm run build:web",
-    "deploy": "gh-pages -d dist -t true"
+    "deploy": "gh-pages -d dist -t true",
+    "desktop": "electron electron/main.js",
+    "desktop:build": "npm run build:web && electron-builder --win",
+    "desktop:dir": "npm run build:web && electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.learnplan.desktop",
+    "productName": "To Do",
+    "copyright": "Copyright © 2026 To Do",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "To Do"
+    }
   },
   "private": true
 }

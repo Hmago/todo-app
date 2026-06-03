@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { spacing, radius, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { useOnboarding } from '../store/useOnboarding';
+import { AppModal } from './AppModal';
 
 interface Slide {
   icon: string;
@@ -60,7 +61,7 @@ export function OnboardingOverlay() {
   const next = () => (last ? complete() : setIndex((i) => i + 1));
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={complete}>
+    <AppModal visible transparent animationType="fade" onRequestClose={complete}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Pressable style={styles.skip} onPress={complete} hitSlop={8}>
@@ -93,7 +94,7 @@ export function OnboardingOverlay() {
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

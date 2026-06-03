@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -14,6 +13,7 @@ import {
 import { LearningGoal } from '../types';
 import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
+import { AppModal } from './AppModal';
 import { todayKey } from '../lib/dates';
 import { nextSrDate } from '../lib/study';
 import { useStore } from '../store/useStore';
@@ -82,7 +82,7 @@ export function GoalEditorModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <AppModal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}
@@ -164,7 +164,7 @@ export function GoalEditorModal({
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </AppModal>
   );
 }
 

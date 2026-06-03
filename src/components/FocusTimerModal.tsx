@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { AppModal } from './AppModal';
 import { radius, spacing, fontFamily, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button } from './ui';
 import { useStore } from '../store/useStore';
@@ -100,7 +101,7 @@ export function FocusTimerModal({
   const progress = 1 - secondsLeft / (minutes * 60);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={logAndClose}>
+    <AppModal visible={visible} transparent animationType="fade" onRequestClose={logAndClose}>
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <Text style={styles.heading}>Focus timer</Text>
@@ -149,7 +150,7 @@ export function FocusTimerModal({
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

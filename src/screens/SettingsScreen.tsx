@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Switch, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Switch } from 'react-native';
+import { AppModal } from '../components/AppModal';
 import { radius, spacing, fontFamily, shadow, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { useSettings } from '../store/useSettings';
@@ -323,7 +324,7 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
       </ScrollView>
 
       {/* Paste-to-import (native, where file picking isn't available) */}
-      <Modal visible={pasteOpen} transparent animationType="fade" onRequestClose={() => setPasteOpen(false)}>
+      <AppModal visible={pasteOpen} transparent animationType="fade" onRequestClose={() => setPasteOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Paste backup</Text>
@@ -352,10 +353,10 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
             </View>
           </View>
         </View>
-      </Modal>
+      </AppModal>
 
       {/* Confirm restore */}
-      <Modal visible={!!pending} transparent animationType="fade" onRequestClose={() => setPending(null)}>
+      <AppModal visible={!!pending} transparent animationType="fade" onRequestClose={() => setPending(null)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Restore this backup?</Text>
@@ -374,7 +375,7 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
             </View>
           </View>
         </View>
-      </Modal>
+      </AppModal>
     </View>
   );
 }

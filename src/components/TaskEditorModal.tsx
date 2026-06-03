@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -14,6 +13,8 @@ import {
 import { Task, Priority, RecurrenceFreq, ItemType, RecurrenceRule, Subtask, TaskLink } from '../types';
 import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
+import { AppModal } from './AppModal';
+import { DateTimeField } from './DateTimeField';
 import { todayKey, toKey, fromKey, toLocalIso, prettyReminder, prettyDuration } from '../lib/dates';
 import { WEEKDAY_ABBR } from '../lib/recurrence';
 import { addDays } from 'date-fns';
@@ -261,7 +262,7 @@ export function TaskEditorModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <AppModal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}
@@ -349,14 +350,7 @@ export function TaskEditorModal({
             )}
 
             <Label>Date</Label>
-            <TextInput
-              value={date}
-              onChangeText={setDate}
-              placeholder="yyyy-mm-dd"
-              placeholderTextColor={colors.textDim}
-              style={styles.input}
-              autoCapitalize="none"
-            />
+            <DateTimeField mode="date" value={date} onChange={setDate} style={styles.input} />
             <View style={styles.rowWrap}>
               <Chip label="Today" onPress={() => setDate(todayKey())} />
               <Chip label="Tomorrow" onPress={() => setDate(toKey(addDays(new Date(), 1)))} />
@@ -366,14 +360,17 @@ export function TaskEditorModal({
             </View>
 
             <Label>Start date</Label>
-            <TextInput
+            <DateTimeField
+              mode="date"
               value={startDate}
-              onChangeText={setStartDate}
+              onChange={setStartDate}
               placeholder="yyyy-mm-dd (optional)"
-              placeholderTextColor={colors.textDim}
               style={styles.input}
-              autoCapitalize="none"
             />
+            <View style={styles.rowWrap}>
+              <Chip label="Today" onPress={() => setStartDate(todayKey())} />
+              <Chip label="Clear" onPress={() => setStartDate('')} />
+            </View>
             <View style={styles.rowWrap}>
               <Chip label="Today" onPress={() => setStartDate(todayKey())} />
               <Chip label="Clear" onPress={() => setStartDate('')} />
@@ -391,14 +388,7 @@ export function TaskEditorModal({
             {!allDay ? (
               <>
                 <Label>Time</Label>
-                <TextInput
-                  value={time}
-                  onChangeText={setTime}
-                  placeholder="HH:mm (optional)"
-                  placeholderTextColor={colors.textDim}
-                  style={styles.input}
-                  autoCapitalize="none"
-                />
+                <DateTimeField mode="time" value={time} onChange={setTime} style={styles.input} />
                 <View style={styles.rowWrap}>
                   {QUICK_TIMES.map((q) => (
                     <Chip key={q} label={q} active={time === q} onPress={() => setTime(time === q ? '' : q)} />
@@ -617,7 +607,7 @@ export function TaskEditorModal({
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </AppModal>
   );
 }
 
