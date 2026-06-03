@@ -33,6 +33,42 @@ export function registerPWA(): void {
     return m;
   };
 
+  // Viewport must opt into the safe-area insets (viewport-fit=cover) and lock
+  // zoom so the layout doesn't "shake" when inputs focus or the toolbar resizes.
+  try {
+    let vp = doc.querySelector('meta[name="viewport"]');
+    if (!vp) {
+      vp = doc.createElement('meta');
+      vp.setAttribute('name', 'viewport');
+      doc.head.appendChild(vp);
+    }
+    vp.setAttribute(
+      'content',
+      'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover',
+    );
+  } catch (e) {
+    /* ignore */
+  }
+
+  // Global web styles: pin the app to the viewport, kill rubber-band/overscroll,
+  // honour the safe-area insets, and prevent iOS zoom-on-focus jitter.
+  ensure('style[data-app-pwa]', () => {
+    const s = doc.createElement('style');
+    s.setAttribute('data-app-pwa', '');
+    s.textContent = [
+      'html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;}',
+      '#root{position:fixed;top:0;left:0;right:0;bottom:0;overflow:hidden;}',
+      '#app-root{position:fixed;top:0;left:0;right:0;bottom:0;}',
+      '*{-webkit-tap-highlight-color:transparent;}',
+      // iOS zooms (and jitters) when focusing inputs smaller than 16px.
+      'input,textarea,select{font-size:16px;}',
+      // Respect the top notch and the bottom home-indicator.
+      '#app-root{padding-top:env(safe-area-inset-top);}',
+      '#app-tabbar{padding-bottom:calc(env(safe-area-inset-bottom) + 6px) !important;}',
+    ].join('\n');
+    return s;
+  });
+
   ensure('link[rel="manifest"]', () => {
     const l = doc.createElement('link');
     l.rel = 'manifest';

@@ -127,7 +127,7 @@ function AppInner() {
 
   if (isDesktop) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={styles.root} nativeID="app-root">
       <StatusBar style={statusBarStyle} />
         <View style={styles.desktopRow}>
           <Sidebar active={activeKey} onSelect={select} />
@@ -141,7 +141,7 @@ function AppInner() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} nativeID="app-root">
       <StatusBar style={statusBarStyle} />
       {tab === 'home' && !sub ? (
         <View style={styles.homeHeader}>
@@ -151,11 +151,11 @@ function AppInner() {
 
       <View style={styles.body}>{renderContent(false)}</View>
 
-      <View style={styles.tabbar}>
+      <View style={styles.tabbar} nativeID="app-tabbar">
         {TABS.map((t) => {
           const active = !sub && t.key === tab;
           return (
-            <Pressable key={t.key} style={styles.tab} onPress={() => goTab(t.key)}>
+            <Pressable key={t.key} style={styles.tab} onPress={() => goTab(t.key)} hitSlop={6}>
               <Text style={[styles.tabIcon, !active && styles.tabInactive]}>{t.icon}</Text>
               <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
             </Pressable>
@@ -201,9 +201,9 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     backgroundColor: colors.sidebar,
     paddingBottom: Platform.OS === 'ios' ? spacing(1) : 0,
   },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: spacing(1) },
-  tabIcon: { fontSize: 20 },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing(1.25), minHeight: 54 },
+  tabIcon: { fontSize: 22 },
   tabInactive: { opacity: 0.45 },
-  tabLabel: { color: colors.textDim, fontSize: 10, marginTop: 2, fontWeight: '600', fontFamily },
+  tabLabel: { color: colors.textDim, fontSize: 11, marginTop: 3, fontWeight: '600', fontFamily },
   tabLabelActive: { color: colors.primary },
 });
