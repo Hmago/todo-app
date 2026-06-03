@@ -93,8 +93,42 @@ export function registerPWA(): void {
   // in case notifications are unsupported, so install/offline still work.
   const nav: any = g.navigator;
   if (nav && 'serviceWorker' in nav) {
+    // Auto-reload when a *new* service worker takes control, so a freshly
+    // deployed build replaces a stale one without the user clearing the cache
+    // (critical for installed home-screen PWAs, which otherwise resume the old
+    // in-memory page on reopen).
+    const hadController = !!nav.serviceWorker.controller;
+    let reloading = false;
+    nav.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      try {
+        g.location.reload();
+      } catch (e) {
+        /* ignore */
+      }
+    });
+
     nav.serviceWorker
       .register(asset('/service-worker.js'), { scope: asset('/') })
+      .then((reg: any) => {
+        // Check for a new version on launch and whenever the app regains focus.
+        const check = () => {
+          try {
+            reg.update();
+          } catch (e) {
+            /* ignore */
+          }
+        };
+        check();
+        try {
+          doc.addEventListener('visibilitychange', () => {
+            if (doc.visibilityState === 'visible') check();
+          });
+        } catch (e) {
+          /* ignore */
+        }
+      })
       .catch(() => undefined);
   }
 }

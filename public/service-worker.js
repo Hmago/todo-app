@@ -5,7 +5,7 @@
  * Time-based delivery for a fully closed tab would require Web Push (server +
  * VAPID) and is intentionally out of scope for this local-first app.
  */
-const CACHE = 'learnplan-pwa-v1';
+const CACHE = 'learnplan-pwa-v2';
 // Resolve against the SW script location so paths work under a subpath (e.g.
 // GitHub Pages /todo-app/) as well as at the domain root.
 const u = (p) => new URL(p, self.location.href).toString();
