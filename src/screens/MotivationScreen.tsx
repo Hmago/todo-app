@@ -2,12 +2,15 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from 'react-native';
 import { radius, spacing, fontFamily, shadow, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 import { ListHeader } from '../components/ListHeader';
-import { Chip, EmptyState } from '../components/ui';
+import { EmptyState } from '../components/ui';
 import { todayKey } from '../lib/dates';
 import { QUOTES, QUOTE_CATEGORIES, Quote, QuoteCategory } from '../data/quotes';
 import { useMotivation } from '../store/useMotivation';
 
 const ACCENT = listThemes.motivation.accent;
+// Fixed dark ink that reads well on the golden hero in both light & dark mode.
+const HERO_INK = '#241f08';
+const HERO_INK_DIM = '#5a4f1c';
 
 type Filter = 'all' | 'favorites' | QuoteCategory;
 
@@ -22,8 +25,27 @@ function copyToClipboard(text: string): void {
   }
 }
 
+function shareQuote(text: string): boolean {
+  try {
+    const g: any = globalThis;
+    if (Platform.OS === 'web' && g.navigator?.share) {
+      g.navigator.share({ text }).catch(() => {});
+      return true;
+    }
+  } catch {
+    /* best-effort */
+  }
+  copyToClipboard(text);
+  return false;
+}
+
 function categoryMeta(cat: QuoteCategory) {
   return QUOTE_CATEGORIES.find((c) => c.key === cat) ?? QUOTE_CATEGORIES[0];
+}
+
+function initial(author: string): string {
+  const a = author.trim();
+  return a ? a[0].toUpperCase() : '“';
 }
 
 function QuoteCard({
@@ -43,17 +65,29 @@ function QuoteCard({
   const meta = categoryMeta(quote.category);
   return (
     <View style={styles.card}>
+      <View style={[styles.cardStripe, { backgroundColor: meta.accent }]} />
+      <Text style={[styles.cardMark, { color: meta.accent + '33' }]}>”</Text>
       <Text style={styles.cardText}>{quote.text}</Text>
       <View style={styles.cardFooter}>
         <View style={styles.authorWrap}>
-          <View style={[styles.catDot, { backgroundColor: meta.accent }]} />
-          <Text style={styles.author}>{quote.author}</Text>
+          <View style={[styles.avatar, { backgroundColor: meta.accent }]}>
+            <Text style={styles.avatarText}>{initial(quote.author)}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.author} numberOfLines={1}>
+              {quote.author}
+            </Text>
+            <Text style={[styles.catTag, { color: meta.accent }]} numberOfLines={1}>
+              {meta.icon ? meta.icon + ' ' : ''}
+              {meta.label}
+            </Text>
+          </View>
         </View>
         <View style={styles.actions}>
-          <Pressable onPress={onCopy} hitSlop={8} style={styles.actionBtn}>
-            <Text style={styles.actionText}>{copied ? '✓ Copied' : '⧉ Copy'}</Text>
+          <Pressable onPress={onCopy} hitSlop={8} style={styles.iconBtn}>
+            <Text style={styles.actionText}>{copied ? '✓' : '⧉'}</Text>
           </Pressable>
-          <Pressable onPress={onToggleFavorite} hitSlop={8} style={styles.actionBtn}>
+          <Pressable onPress={onToggleFavorite} hitSlop={8} style={styles.iconBtn}>
             <Text style={[styles.heart, favorite && styles.heartActive]}>{favorite ? '♥' : '♡'}</Text>
           </Pressable>
         </View>
@@ -71,6 +105,7 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [heroId, setHeroId] = useState<string | null>(null);
 
   const favSet = useMemo(() => new Set(favorites), [favorites]);
 
@@ -79,6 +114,19 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
     const n = parseInt(todayKey().replace(/-/g, ''), 10) || 0;
     return QUOTES[n % QUOTES.length];
   }, []);
+
+  const featured = useMemo(
+    () => (heroId ? QUOTES.find((q) => q.id === heroId) ?? quoteOfDay : quoteOfDay),
+    [heroId, quoteOfDay],
+  );
+
+  const surprise = useCallback(() => {
+    let next = featured;
+    for (let i = 0; i < 5 && next.id === featured.id; i++) {
+      next = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+    }
+    setHeroId(next.id);
+  }, [featured]);
 
   const filtered = useMemo(() => {
     let list: Quote[];
@@ -109,13 +157,42 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
     setTimeout(() => setCopiedId((cur) => (cur === q.id ? null : cur)), 1500);
   }, []);
 
+  const onShare = useCallback(
+    (q: Quote) => {
+      const shared = shareQuote(`“${q.text}” — ${q.author}`);
+      if (!shared) {
+        setCopiedId(q.id);
+        setTimeout(() => setCopiedId((cur) => (cur === q.id ? null : cur)), 1500);
+      }
+    },
+    [],
+  );
+
   const counts = useMemo(() => {
     const byCat: Record<string, number> = {};
     for (const q of QUOTES) byCat[q.category] = (byCat[q.category] ?? 0) + 1;
     return byCat;
   }, []);
 
-  const dayMeta = categoryMeta(quoteOfDay.category);
+  const heroMeta = categoryMeta(featured.category);
+  const heroFav = favSet.has(featured.id);
+
+  const renderChip = (
+    key: string,
+    label: string,
+    dot: string | null,
+    active: boolean,
+    onPress: () => void,
+  ) => (
+    <Pressable
+      key={key}
+      onPress={onPress}
+      style={[styles.chip, active && { borderColor: dot ?? colors.primary, backgroundColor: (dot ?? colors.primary) + '1f' }]}
+    >
+      {dot ? <View style={[styles.chipDot, { backgroundColor: dot }]} /> : null}
+      <Text style={[styles.chipText, active && { color: dot ?? colors.primary, fontWeight: '700' }]}>{label}</Text>
+    </Pressable>
+  );
 
   return (
     <View style={styles.screen}>
@@ -132,49 +209,76 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
         }
       />
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {/* Quote of the day */}
-        <Text style={styles.sectionLabel}>Quote of the day</Text>
-        <View style={[styles.qotd, { borderColor: ACCENT + '55' }]}>
-          <Text style={styles.qotdMark}>“</Text>
-          <Text style={styles.qotdText}>{quoteOfDay.text}</Text>
-          <View style={styles.cardFooter}>
-            <View style={styles.authorWrap}>
-              <View style={[styles.catDot, { backgroundColor: dayMeta.accent }]} />
-              <Text style={styles.author}>{quoteOfDay.author}</Text>
-            </View>
-            <View style={styles.actions}>
-              <Pressable onPress={() => onCopy(quoteOfDay)} hitSlop={8} style={styles.actionBtn}>
-                <Text style={styles.actionText}>{copiedId === quoteOfDay.id ? '✓ Copied' : '⧉ Copy'}</Text>
-              </Pressable>
-              <Pressable onPress={() => toggleFavorite(quoteOfDay.id)} hitSlop={8} style={styles.actionBtn}>
-                <Text style={[styles.heart, favSet.has(quoteOfDay.id) && styles.heartActive]}>
-                  {favSet.has(quoteOfDay.id) ? '♥' : '♡'}
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Hero — quote of the day */}
+        <View style={styles.hero}>
+          <View style={styles.heroBlob1} />
+          <View style={styles.heroBlob2} />
+          <Text style={styles.heroWatermark}>”</Text>
+
+          <View style={styles.heroTop}>
+            <Text style={styles.heroKicker}>✦ {heroId ? 'INSPIRATION' : 'QUOTE OF THE DAY'}</Text>
+            <Pressable onPress={surprise} hitSlop={10} style={styles.heroRefresh}>
+              <Text style={styles.heroRefreshText}>↻ Surprise me</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.heroQuote}>{featured.text}</Text>
+
+          <View style={styles.heroFooter}>
+            <View style={styles.heroAuthorWrap}>
+              <View style={styles.heroAvatar}>
+                <Text style={styles.heroAvatarText}>{initial(featured.author)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroAuthor} numberOfLines={1}>
+                  {featured.author}
                 </Text>
+                <Text style={styles.heroCat} numberOfLines={1}>
+                  {heroMeta.icon ? heroMeta.icon + ' ' : ''}
+                  {heroMeta.label}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.heroActions}>
+              <Pressable onPress={() => toggleFavorite(featured.id)} hitSlop={8} style={styles.heroIconBtn}>
+                <Text style={[styles.heroHeart, heroFav && styles.heroHeartActive]}>{heroFav ? '♥' : '♡'}</Text>
+              </Pressable>
+              <Pressable onPress={() => onShare(featured)} hitSlop={8} style={styles.heroIconBtn}>
+                <Text style={styles.heroShare}>↗</Text>
+              </Pressable>
+              <Pressable onPress={() => onCopy(featured)} hitSlop={6} style={styles.heroCopyBtn}>
+                <Text style={styles.heroCopyText}>{copiedId === featured.id ? '✓ Copied' : 'Copy'}</Text>
               </Pressable>
             </View>
           </View>
         </View>
 
         {/* Filters */}
-        <View style={styles.filters}>
-          <Chip label={`All ${QUOTES.length}`} active={filter === 'all'} onPress={() => setFilter('all')} />
-          <Chip
-            label={`♥ Favorites ${favorites.length}`}
-            color={colors.danger}
-            active={filter === 'favorites'}
-            onPress={() => setFilter('favorites')}
-          />
-          {QUOTE_CATEGORIES.map((c) => (
-            <Chip
-              key={c.key}
-              label={`${c.icon ? c.icon + ' ' : ''}${c.label} ${counts[c.key] ?? 0}`}
-              color={c.accent}
-              active={filter === c.key}
-              onPress={() => setFilter(c.key)}
-            />
-          ))}
-        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filters}
+          contentContainerStyle={styles.filtersInner}
+        >
+          {renderChip('all', `All ${QUOTES.length}`, null, filter === 'all', () => setFilter('all'))}
+          {renderChip(
+            'favorites',
+            `♥ Favorites ${favorites.length}`,
+            colors.danger,
+            filter === 'favorites',
+            () => setFilter('favorites'),
+          )}
+          {QUOTE_CATEGORIES.map((c) =>
+            renderChip(
+              c.key,
+              `${c.icon ? c.icon + ' ' : ''}${c.label} ${counts[c.key] ?? 0}`,
+              c.accent,
+              filter === c.key,
+              () => setFilter(c.key),
+            ),
+          )}
+        </ScrollView>
 
         {/* List */}
         {filtered.length === 0 ? (
@@ -204,45 +308,166 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
 const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: spacing(3), paddingTop: spacing(0.5) },
-  sectionLabel: {
-    color: colors.textDim,
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily,
-    marginBottom: spacing(1),
-    marginTop: spacing(1),
-  },
-  qotd: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: spacing(2.5),
+  content: { paddingHorizontal: spacing(3), paddingTop: spacing(1) },
+
+  // Hero
+  hero: {
+    backgroundColor: ACCENT,
+    borderRadius: radius.lg + 6,
+    padding: spacing(2.75),
     marginBottom: spacing(2.5),
+    overflow: 'hidden',
     ...shadow,
   },
-  qotdMark: { color: ACCENT, fontSize: 40, lineHeight: 36, fontWeight: '800', fontFamily, marginBottom: -spacing(1) },
-  qotdText: { color: colors.text, fontSize: 21, lineHeight: 30, fontWeight: '600', fontFamily, marginBottom: spacing(2) },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing(1.5) },
+  heroBlob1: {
+    position: 'absolute',
+    top: -60,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#ffffff22',
+  },
+  heroBlob2: {
+    position: 'absolute',
+    bottom: -50,
+    left: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#00000012',
+  },
+  heroWatermark: {
+    position: 'absolute',
+    top: -14,
+    right: 14,
+    fontSize: 130,
+    lineHeight: 130,
+    color: '#ffffff2e',
+    fontWeight: '900',
+    fontFamily,
+  },
+  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing(1.5) },
+  heroKicker: { color: HERO_INK, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, fontFamily },
+  heroRefresh: {
+    backgroundColor: '#ffffff40',
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(0.5),
+    borderRadius: radius.pill,
+  },
+  heroRefreshText: { color: HERO_INK, fontSize: 12, fontWeight: '700', fontFamily },
+  heroQuote: {
+    color: HERO_INK,
+    fontSize: 23,
+    lineHeight: 32,
+    fontWeight: '800',
+    fontFamily,
+    marginBottom: spacing(2.25),
+  },
+  heroFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroAuthorWrap: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: spacing(1) },
+  heroAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ffffff55',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing(1.25),
+  },
+  heroAvatarText: { color: HERO_INK, fontSize: 18, fontWeight: '800', fontFamily },
+  heroAuthor: { color: HERO_INK, fontSize: 15, fontWeight: '800', fontFamily },
+  heroCat: { color: HERO_INK_DIM, fontSize: 12, fontWeight: '600', fontFamily, marginTop: 1 },
+  heroActions: { flexDirection: 'row', alignItems: 'center' },
+  heroIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#ffffff3a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing(0.75),
+  },
+  heroHeart: { color: HERO_INK, fontSize: 18, lineHeight: 20 },
+  heroHeartActive: { color: '#c01933' },
+  heroShare: { color: HERO_INK, fontSize: 16, fontWeight: '800', lineHeight: 18 },
+  heroCopyBtn: {
+    backgroundColor: HERO_INK,
+    paddingHorizontal: spacing(1.5),
+    paddingVertical: spacing(0.85),
+    borderRadius: radius.pill,
+    marginLeft: spacing(0.75),
+  },
+  heroCopyText: { color: ACCENT, fontSize: 13, fontWeight: '800', fontFamily },
+
+  // Filters
+  filters: { marginBottom: spacing(2), marginHorizontal: -spacing(3) },
+  filtersInner: { paddingHorizontal: spacing(3), paddingRight: spacing(2) },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing(0.85),
+    paddingHorizontal: spacing(1.5),
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginRight: spacing(1),
+  },
+  chipDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  chipText: { color: colors.textDim, fontSize: 13, fontWeight: '600', fontFamily },
+
+  // Quote cards
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing(2),
+    paddingVertical: spacing(2),
+    paddingLeft: spacing(2.25),
+    paddingRight: spacing(2),
     marginBottom: spacing(1.5),
+    overflow: 'hidden',
     ...shadow,
   },
-  cardText: { color: colors.text, fontSize: 16, lineHeight: 24, fontFamily, marginBottom: spacing(1.5) },
+  cardStripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
+  cardMark: {
+    position: 'absolute',
+    top: -10,
+    right: 10,
+    fontSize: 64,
+    lineHeight: 64,
+    fontWeight: '900',
+    fontFamily,
+  },
+  cardText: { color: colors.text, fontSize: 16, lineHeight: 24, fontFamily, marginBottom: spacing(1.75) },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  authorWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  catDot: { width: 8, height: 8, borderRadius: 4, marginRight: spacing(1) },
-  author: { color: colors.textDim, fontSize: 13, fontWeight: '600', fontFamily },
+  authorWrap: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: spacing(1) },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing(1.25),
+  },
+  avatarText: { color: '#ffffff', fontSize: 15, fontWeight: '800', fontFamily },
+  author: { color: colors.text, fontSize: 14, fontWeight: '700', fontFamily },
+  catTag: { fontSize: 12, fontWeight: '600', fontFamily, marginTop: 1 },
   actions: { flexDirection: 'row', alignItems: 'center' },
-  actionBtn: { paddingHorizontal: spacing(1), paddingVertical: spacing(0.5) },
-  actionText: { color: colors.textDim, fontSize: 13, fontWeight: '600', fontFamily },
-  heart: { color: colors.textFaint, fontSize: 20, lineHeight: 22 },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing(0.75),
+  },
+  actionText: { color: colors.textDim, fontSize: 15, fontWeight: '700', fontFamily },
+  heart: { color: colors.textFaint, fontSize: 18, lineHeight: 20 },
   heartActive: { color: colors.danger },
+
   shuffleBtn: { paddingHorizontal: spacing(1), paddingVertical: spacing(0.5) },
   shuffleText: { color: ACCENT, fontSize: 14, fontWeight: '600', fontFamily },
 });

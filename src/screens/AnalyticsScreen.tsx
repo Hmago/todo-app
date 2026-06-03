@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { radius, spacing, fontFamily, listThemes, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { Card, ProgressBar, SectionTitle, Button } from '../components/ui';
 import { ListHeader } from '../components/ListHeader';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
-import { todayKey, toKey, prettyDuration } from '../lib/dates';
-import { addDays, format } from 'date-fns';
+import { HourlyHistogram } from '../components/HourlyHistogram';
+import { GoalProgressList } from '../components/GoalProgressList';
+import { todayKey, toKey, fromKey, prettyDate, prettyDuration } from '../lib/dates';
+import { addDays, format, startOfMonth, startOfYear, isValid, parseISO } from 'date-fns';
 import { occursOn, isOccurrenceDone, expandRange } from '../lib/recurrence';
 import { studyActiveDays, studyStreak, totalMinutesSince, minutesForGoal } from '../lib/study';
 import {
@@ -15,6 +17,12 @@ import {
   completionStreak,
   bestStreak,
   seriesTotals,
+  previousPeriod,
+  computeDelta,
+  formatDelta,
+  tagBreakdown,
+  hourlyHistogram,
+  Delta,
 } from '../lib/analytics';
 import {
   tasksToCsv,
@@ -28,13 +36,42 @@ import {
 } from '../lib/dataio';
 
 const learnAccent = listThemes.learning.accent;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-type RangeKey = '30d' | '90d' | '1y';
-const RANGES: { key: RangeKey; label: string; days: number }[] = [
-  { key: '30d', label: '30 days', days: 30 },
-  { key: '90d', label: '90 days', days: 90 },
-  { key: '1y', label: '1 year', days: 365 },
+type RangeKey = '7d' | '30d' | '90d' | 'mtd' | 'ytd' | '1y' | 'custom';
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: '7d', label: '7d' },
+  { key: '30d', label: '30d' },
+  { key: '90d', label: '90d' },
+  { key: 'mtd', label: 'MTD' },
+  { key: 'ytd', label: 'YTD' },
+  { key: '1y', label: '1y' },
+  { key: 'custom', label: 'Custom' },
 ];
+
+function rangeFor(key: RangeKey, custom: { from: string; to: string }): { from: string; to: string } {
+  const today = todayKey();
+  switch (key) {
+    case '7d':
+      return { from: toKey(addDays(new Date(), -6)), to: today };
+    case '30d':
+      return { from: toKey(addDays(new Date(), -29)), to: today };
+    case '90d':
+      return { from: toKey(addDays(new Date(), -89)), to: today };
+    case 'mtd':
+      return { from: toKey(startOfMonth(new Date())), to: today };
+    case 'ytd':
+      return { from: toKey(startOfYear(new Date())), to: today };
+    case '1y':
+      return { from: toKey(addDays(new Date(), -364)), to: today };
+    case 'custom':
+      return custom;
+  }
+}
+
+function validIsoKey(s: string): boolean {
+  return ISO_RE.test(s) && isValid(parseISO(s));
+}
 
 export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
   const colors = useTheme();
@@ -46,17 +83,25 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
   const addTask = useStore((s) => s.addTask);
   const addCategory = useStore((s) => s.addCategory);
 
-  const [range, setRange] = useState<RangeKey>('90d');
+  const [range, setRange] = useState<RangeKey>('30d');
+  const [compare, setCompare] = useState(false);
+  const todayKeyStr = todayKey();
+  const [customFrom, setCustomFrom] = useState<string>(toKey(addDays(new Date(), -29)));
+  const [customTo, setCustomTo] = useState<string>(todayKeyStr);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const rangeDays = RANGES.find((r) => r.key === range)!.days;
+  const customValid = validIsoKey(customFrom) && validIsoKey(customTo) && customFrom <= customTo;
+  const { from, to } = useMemo(() => {
+    if (range === 'custom' && !customValid) {
+      // Fall back to last 30 days if user hasn't entered a valid custom range yet.
+      return { from: toKey(addDays(new Date(), -29)), to: todayKeyStr };
+    }
+    return rangeFor(range, { from: customFrom, to: customTo });
+  }, [range, customFrom, customTo, customValid, todayKeyStr]);
 
   const stats = useMemo(() => {
     const today = todayKey();
-    const start30 = toKey(addDays(new Date(), -29));
-    const occ30 = expandRange(tasks, start30, today);
-    const total30 = occ30.length;
-    const done30 = occ30.filter((o) => isOccurrenceDone(o.task, o.dateKey)).length;
+    const occRange = expandRange(tasks, from, to);
 
     const week: { label: string; total: number; done: number }[] = [];
     for (let i = 6; i >= 0; i--) {
@@ -74,7 +119,7 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
     }
 
     const byCat = categories.map((c) => {
-      const items = occ30.filter((o) => o.task.categoryId === c.id);
+      const items = occRange.filter((o) => o.task.categoryId === c.id);
       const cdone = items.filter((o) => isOccurrenceDone(o.task, o.dateKey)).length;
       return { category: c, total: items.length, done: cdone };
     });
@@ -95,7 +140,6 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
     const maxGoalMin = Math.max(1, ...byGoal.map((b) => b.minutes));
 
     return {
-      rate30: total30 ? done30 / total30 : 0,
       week,
       byCat,
       doneToday,
@@ -109,11 +153,10 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
       byGoal,
       maxGoalMin,
     };
-  }, [tasks, categories, goals, studySessions]);
+  }, [tasks, categories, goals, studySessions, from, to]);
 
   const series = useMemo(() => {
-    const from = toKey(addDays(new Date(), -(rangeDays - 1)));
-    const days = dailySeries(tasks, studySessions, from, todayKey());
+    const days = dailySeries(tasks, studySessions, from, to);
     const weeks = weeklyFromDaily(days);
     return {
       days,
@@ -122,7 +165,35 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
       streak: completionStreak(days),
       best: bestStreak(days),
     };
-  }, [tasks, studySessions, rangeDays]);
+  }, [tasks, studySessions, from, to]);
+
+  const prev = useMemo(() => {
+    if (!compare) return null;
+    const p = previousPeriod(from, to);
+    const days = dailySeries(tasks, studySessions, p.from, p.to);
+    return { range: p, totals: seriesTotals(days) };
+  }, [tasks, studySessions, from, to, compare]);
+
+  const deltas = useMemo(() => {
+    if (!prev) return null;
+    return {
+      completed: computeDelta(series.totals.completed, prev.totals.completed, 'count'),
+      rate: computeDelta(series.totals.rate, prev.totals.rate, 'rate'),
+      focus: computeDelta(series.totals.focusMin, prev.totals.focusMin, 'duration'),
+      active: computeDelta(series.totals.activeDays, prev.totals.activeDays, 'count'),
+    };
+  }, [series, prev]);
+
+  const tagStats = useMemo(() => tagBreakdown(tasks, from, to), [tasks, from, to]);
+  const hourStats = useMemo(
+    () => hourlyHistogram(tasks, studySessions, from, to),
+    [tasks, studySessions, from, to],
+  );
+  const rangeDays = useMemo(
+    () =>
+      Math.max(1, Math.round((fromKey(to).getTime() - fromKey(from).getTime()) / 86_400_000) + 1),
+    [from, to],
+  );
 
   const maxWeek = Math.max(1, ...stats.week.map((w) => w.total));
   const maxVel = Math.max(1, ...series.weeks.map((w) => w.completed));
@@ -141,7 +212,7 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
     flash(isWeb ? 'Focus sessions CSV downloaded.' : 'Focus CSV shared.');
   };
   const onExportPdf = () => {
-    const ok = printHtml(buildReportHtml(stats, series));
+    const ok = printHtml(buildReportHtml(stats, series, rangeDays));
     flash(ok ? 'Opened printable report — choose “Save as PDF”.' : 'PDF export is available on web.');
   };
   const onImport = async () => {
@@ -196,15 +267,6 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
         ) : null}
 
         <SectionTitle>Overview</SectionTitle>
-        <View style={styles.kpiRow}>
-          <Kpi label="Done today" value={`${stats.doneToday}/${stats.totalToday}`} color={colors.success} />
-          <Kpi label="Streak" value={`${series.streak}🔥`} color={colors.warning} />
-        </View>
-        <View style={styles.kpiRow}>
-          <Kpi label="30-day rate" value={`${Math.round(stats.rate30 * 100)}%`} color={colors.primary} />
-          <Kpi label="Best streak" value={`${series.best}d`} color={colors.text} />
-        </View>
-
         <View style={styles.rangeRow}>
           {RANGES.map((r) => (
             <Pressable
@@ -215,6 +277,78 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
               <Text style={[styles.rangeText, range === r.key && styles.rangeTextActive]}>{r.label}</Text>
             </Pressable>
           ))}
+        </View>
+        {range === 'custom' ? (
+          <View style={styles.customRow}>
+            <TextInput
+              value={customFrom}
+              onChangeText={setCustomFrom}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.customInput}
+            />
+            <Text style={styles.customSep}>→</Text>
+            <TextInput
+              value={customTo}
+              onChangeText={setCustomTo}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.customInput}
+            />
+          </View>
+        ) : null}
+        {range === 'custom' && !customValid ? (
+          <Text style={styles.dateError}>Enter valid dates as YYYY-MM-DD (from ≤ to). Showing last 30d.</Text>
+        ) : null}
+        <View style={styles.compareRow}>
+          <Pressable
+            onPress={() => setCompare((v) => !v)}
+            style={[styles.compareToggle, compare && styles.compareToggleOn]}
+          >
+            <Text style={[styles.compareToggleText, compare && styles.compareToggleTextOn]}>
+              {compare ? '✓ Compare prior period' : 'Compare prior period'}
+            </Text>
+          </Pressable>
+          <Text style={styles.rangeSummary} numberOfLines={1}>
+            {prettyDate(from)} – {prettyDate(to)} · {rangeDays}d
+          </Text>
+        </View>
+        {compare && prev ? (
+          <Text style={styles.compareSub}>
+            vs {prettyDate(prev.range.from)} – {prettyDate(prev.range.to)}
+          </Text>
+        ) : null}
+
+        <View style={styles.kpiRow}>
+          <Kpi label="Done today" value={`${stats.doneToday}/${stats.totalToday}`} color={colors.success} />
+          <Kpi label="Streak" value={`${series.streak}🔥`} color={colors.warning} />
+        </View>
+        <View style={styles.kpiRow}>
+          <Kpi
+            label={`Rate (${rangeDays}d)`}
+            value={`${Math.round(series.totals.rate * 100)}%`}
+            color={colors.primary}
+            delta={deltas?.rate ?? null}
+          />
+          <Kpi label="Best streak" value={`${series.best}d`} color={colors.text} />
+        </View>
+        <View style={styles.kpiRow}>
+          <Kpi
+            label={`Completed (${rangeDays}d)`}
+            value={`${series.totals.completed}`}
+            color={colors.success}
+            delta={deltas?.completed ?? null}
+          />
+          <Kpi
+            label={`Focus (${rangeDays}d)`}
+            value={prettyDuration(series.totals.focusMin) || '0m'}
+            color={learnAccent}
+            delta={deltas?.focus ?? null}
+          />
         </View>
 
         <SectionTitle>Activity heatmap</SectionTitle>
@@ -292,7 +426,12 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
           </View>
         </Card>
 
-        <SectionTitle>By category (30 days)</SectionTitle>
+        <SectionTitle>When you finish things</SectionTitle>
+        <Card style={{ marginBottom: spacing(2) }}>
+          <HourlyHistogram data={hourStats} accent={colors.success} focusAccent={learnAccent} />
+        </Card>
+
+        <SectionTitle>By category ({rangeDays}d)</SectionTitle>
         <Card style={{ marginBottom: spacing(2) }}>
           {stats.byCat.every((b) => b.total === 0) ? (
             <Text style={styles.dim}>No activity yet.</Text>
@@ -312,16 +451,31 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
           )}
         </Card>
 
-        <SectionTitle>Learning progress</SectionTitle>
+        <SectionTitle>By tag ({rangeDays}d)</SectionTitle>
         <Card style={{ marginBottom: spacing(2) }}>
-          <View style={styles.catHeader}>
-            <Text style={styles.catName}>Milestones completed</Text>
-            <Text style={styles.catCount}>
-              {stats.msDone}/{stats.msTotal}
-            </Text>
-          </View>
-          <ProgressBar value={stats.msTotal ? stats.msDone / stats.msTotal : 0} color={colors.primary} />
+          {tagStats.length === 0 ? (
+            <Text style={styles.dim}>Add #tags to your tasks to see a breakdown.</Text>
+          ) : (
+            tagStats.map((t) => (
+              <View key={t.tag} style={styles.catRow}>
+                <View style={styles.catHeader}>
+                  <View style={[styles.dot, { backgroundColor: colors.primary }]} />
+                  <Text style={styles.catName} numberOfLines={1}>
+                    #{t.tag}
+                  </Text>
+                  <Text style={styles.catCount}>
+                    {t.done}/{t.total} · {Math.round(t.rate * 100)}%
+                  </Text>
+                </View>
+                <ProgressBar value={t.rate} color={colors.primary} />
+              </View>
+            ))
+          )}
         </Card>
+
+        <SectionTitle>Goal progress</SectionTitle>
+        <GoalProgressList goals={goals} />
+        <View style={{ height: spacing(2) }} />
 
         <SectionTitle>Focus & study</SectionTitle>
         <View style={styles.kpiRow}>
@@ -371,8 +525,9 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
 }
 
 function buildReportHtml(
-  stats: { rate30: number; doneToday: number; totalToday: number; msDone: number; msTotal: number; focusTotal: number; byCat: { category: { name: string }; total: number; done: number }[] },
+  stats: { doneToday: number; totalToday: number; msDone: number; msTotal: number; focusTotal: number; byCat: { category: { name: string }; total: number; done: number }[] },
   series: { totals: { completed: number; scheduled: number; rate: number; focusMin: number; activeDays: number }; streak: number; best: number },
+  rangeDays: number,
 ): string {
   const pct = (n: number) => `${Math.round(n * 100)}%`;
   const dur = (m: number) => {
@@ -402,16 +557,16 @@ function buildReportHtml(
   th{color:#666;font-weight:600}
 </style></head><body>
   <h1>To Do report</h1>
-  <div class="sub">Generated ${new Date().toLocaleString()}</div>
+  <div class="sub">Generated ${new Date().toLocaleString()} · Range ${rangeDays} day${rangeDays === 1 ? '' : 's'}</div>
   <div class="grid">
-    <div class="kpi"><div class="v">${pct(stats.rate30)}</div><div class="l">30-day completion rate</div></div>
+    <div class="kpi"><div class="v">${pct(series.totals.rate)}</div><div class="l">Completion rate (range)</div></div>
     <div class="kpi"><div class="v">${series.streak}🔥</div><div class="l">Current streak (best ${series.best}d)</div></div>
     <div class="kpi"><div class="v">${series.totals.completed}/${series.totals.scheduled}</div><div class="l">Completed in range</div></div>
     <div class="kpi"><div class="v">${dur(series.totals.focusMin)}</div><div class="l">Focus time in range</div></div>
     <div class="kpi"><div class="v">${stats.msDone}/${stats.msTotal}</div><div class="l">Milestones completed</div></div>
     <div class="kpi"><div class="v">${series.totals.activeDays}</div><div class="l">Active days in range</div></div>
   </div>
-  <h3>By category (last 30 days)</h3>
+  <h3>By category (range)</h3>
   <table><thead><tr><th>Category</th><th>Done</th><th>Rate</th></tr></thead><tbody>${
     catRows || '<tr><td colspan="3">No activity</td></tr>'
   }</tbody></table>
@@ -422,12 +577,32 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 }
 
-function Kpi({ label, value, color }: { label: string; value: string; color: string }) {
+function Kpi({
+  label,
+  value,
+  color,
+  delta,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  delta?: Delta | null;
+}) {
   const styles = useThemedStyles(makeStyles);
+  const colors = useTheme();
+  let deltaNode: React.ReactNode = null;
+  if (delta) {
+    const txt = formatDelta(delta);
+    let dColor: string = colors.textDim;
+    if (delta.delta > 0) dColor = colors.success;
+    else if (delta.delta < 0) dColor = colors.danger;
+    deltaNode = <Text style={[styles.kpiDelta, { color: dColor }]}>{txt}</Text>;
+  }
   return (
     <Card style={styles.kpi}>
       <Text style={[styles.kpiValue, { color }]}>{value}</Text>
       <Text style={styles.kpiLabel}>{label}</Text>
+      {deltaNode}
     </Card>
   );
 }
@@ -448,7 +623,48 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   kpi: { flex: 1 },
   kpiValue: { fontSize: 24, fontWeight: '900' },
   kpiLabel: { color: colors.textDim, fontSize: 12, marginTop: 2 },
-  rangeRow: { flexDirection: 'row', gap: spacing(1), marginBottom: spacing(1) },
+  kpiDelta: { fontSize: 11, fontWeight: '700', marginTop: 4, fontFamily },
+  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing(1), marginBottom: spacing(1) },
+  customRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+    marginBottom: spacing(1),
+  },
+  customInput: {
+    flex: 1,
+    paddingVertical: spacing(0.75),
+    paddingHorizontal: spacing(1.25),
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily,
+    fontSize: 13,
+  },
+  customSep: { color: colors.textDim, fontSize: 13, fontWeight: '700' },
+  dateError: { color: colors.danger, fontSize: 12, marginBottom: spacing(1), fontFamily },
+  compareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing(1),
+    marginBottom: spacing(1),
+  },
+  compareToggle: {
+    paddingVertical: spacing(0.75),
+    paddingHorizontal: spacing(1.5),
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  compareToggleOn: { backgroundColor: colors.primary + '22', borderColor: colors.primary },
+  compareToggleText: { color: colors.textDim, fontSize: 12, fontWeight: '700', fontFamily },
+  compareToggleTextOn: { color: colors.primary },
+  rangeSummary: { color: colors.textDim, fontSize: 12, fontFamily, flexShrink: 1, textAlign: 'right' },
+  compareSub: { color: colors.textFaint, fontSize: 11, marginBottom: spacing(1.5), fontFamily },
   rangeChip: {
     paddingVertical: spacing(0.75),
     paddingHorizontal: spacing(1.75),

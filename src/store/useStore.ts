@@ -130,13 +130,34 @@ export const useStore = create<State>()(
             const completedDates = has
               ? t.completedDates.filter((d) => d !== dateKey)
               : [...t.completedDates, dateKey];
+
+            // Record / clear the wall-clock completion time used by the
+            // time-of-day analytics histogram. The map is omitted entirely when
+            // empty to keep persisted payloads compact.
+            const prev = t.completedTimes ?? {};
+            let completedTimes: Record<string, string> | undefined;
+            if (has) {
+              if (prev[dateKey] != null) {
+                const { [dateKey]: _drop, ...rest } = prev;
+                completedTimes = Object.keys(rest).length ? rest : undefined;
+              } else {
+                completedTimes = Object.keys(prev).length ? prev : undefined;
+              }
+            } else {
+              const now = new Date();
+              const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(
+                now.getMinutes(),
+              ).padStart(2, '0')}`;
+              completedTimes = { ...prev, [dateKey]: hhmm };
+            }
+
             // Roll recurring reminders forward to the next occurrence on completion.
             let reminders = t.reminders;
             if (!has && t.recurrence !== 'none' && t.reminders?.length) {
               const next = nextOccurrence(t, dateKey);
               if (next) reminders = t.reminders.map((r) => rollReminderToDate(r, next));
             }
-            return { ...t, completedDates, reminders };
+            return { ...t, completedDates, completedTimes, reminders };
           }),
         })),
 

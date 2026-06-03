@@ -59,6 +59,8 @@ export interface Task {
   order?: number;
   /** Occurrence dates ('yyyy-MM-dd') that have been completed */
   completedDates: string[];
+  /** Wall-clock time the user marked each occurrence done, 'HH:mm' keyed by dateKey. */
+  completedTimes?: Record<string, string>;
   createdAt: string;
   type: ItemType;
   /** Linked learning goal (for study sessions) */

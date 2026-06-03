@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Linking } from 'react-native';
-import { radius, spacing, fontFamily, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
+import { radius, spacing, fontFamily, shadow, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 import { LearningGoal, ResourceKind } from '../types';
@@ -291,7 +291,10 @@ export function LearningScreen({ onBack }: { onBack?: () => void }) {
         </View>
 
         {goals.length === 0 ? (
-          <EmptyState icon="📚" title="No goals yet" subtitle="Create a learning goal and break it into milestones." />
+          <View style={styles.emptyWrap}>
+            <EmptyState icon="📚" title="No goals yet" subtitle="Create a learning goal and break it into milestones." />
+            <Button title="+ New goal" onPress={() => setCreating(true)} style={styles.emptyCta} />
+          </View>
         ) : (
           goals.map((g) => <GoalCard key={g.id} goal={g} onFocus={openFocus} />)
         )}
@@ -299,6 +302,12 @@ export function LearningScreen({ onBack }: { onBack?: () => void }) {
         <GoalEditorModal visible={creating} onClose={() => setCreating(false)} />
         <View style={{ height: spacing(4) }} />
       </ScrollView>
+
+      {goals.length > 0 ? (
+        <Pressable style={styles.fab} onPress={() => setCreating(true)} hitSlop={8}>
+          <Text style={styles.fabIcon}>＋</Text>
+        </Pressable>
+      ) : null}
 
       <FocusTimerModal
         visible={focusVisible}
@@ -314,6 +323,21 @@ export function LearningScreen({ onBack }: { onBack?: () => void }) {
 const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing(1.5) },
+  emptyWrap: { alignItems: 'center' },
+  emptyCta: { marginTop: spacing(1), alignSelf: 'center', paddingHorizontal: spacing(3) },
+  fab: {
+    position: 'absolute',
+    right: spacing(2.5),
+    bottom: spacing(2.5),
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow,
+  },
+  fabIcon: { color: colors.white, fontSize: 30, lineHeight: 32, fontWeight: '300' },
   headerAdd: { color: colors.primary, fontSize: 15, fontWeight: '700', fontFamily },
   heroRow: { flexDirection: 'row', gap: spacing(1.5), marginBottom: spacing(2) },
   hero: {
