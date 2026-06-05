@@ -1,6 +1,6 @@
 # How to Start To Do
 
-A quick guide to running the app on **web** and **iOS**.
+A quick guide to running the app on **web**, **iOS**, and **Windows desktop**.
 
 ## Prerequisites
 
@@ -55,6 +55,30 @@ npm run ios
 
 ---
 
+## Run on Windows desktop
+
+The desktop app is an **Electron** wrapper around the web build.
+
+**Dev mode** (rebuilds on save when paired with `npm run web` in a second terminal):
+
+```powershell
+npm run desktop
+```
+
+**Build the installer:**
+
+```powershell
+npm run desktop:build
+```
+
+The installer lands at `release\To Do Setup.exe` (~160 MB, x64, unsigned). Double-click to install
+or distribute as-is. The `release/` folder is gitignored.
+
+For fast iteration without rebuilding the installer, use `npm run desktop:dir` — the unpacked app
+lives at `release\win-unpacked\To Do.exe`.
+
+---
+
 ## Other commands
 
 | Command          | What it does                                  |
@@ -63,6 +87,9 @@ npm run ios
 | `npm run web`    | Start directly in the browser                 |
 | `npm run ios`    | Start in the iOS Simulator (macOS only)       |
 | `npm run android`| Start in an Android emulator                  |
+| `npm run desktop`     | Run the Electron desktop app in dev mode  |
+| `npm run desktop:build` | Build the Windows installer (`release\To Do Setup.exe`) |
+| `npm run desktop:dir`   | Build the unpacked desktop app only (faster) |
 | `npx tsc --noEmit` | Type-check the project                       |
 
 ---

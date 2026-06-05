@@ -1,9 +1,8 @@
-# To Do — Todo & Learning Planner (Web + iOS)
+# To Do — Cross-platform Todo & Learning Planner
 
-A cross-platform **todo and learning-planning** app built with **Expo + React Native + TypeScript**.
-One codebase runs on **iOS** and the **web**, styled after Microsoft To Do (dark theme). It is
-**local-first**: all data lives on your device (AsyncStorage on native, `localStorage` on web) —
-no backend, account, or sign-in required.
+A local-first **todo and learning-planning** app built with **Expo + React Native + TypeScript**.
+One codebase runs on **Web**, **iOS**, and **Windows desktop** (via Electron). All data lives on
+your device — no backend, no account, no sign-in.
 
 🔗 **Live demo (PWA):** https://hmago.github.io/todo-app/
 
@@ -11,210 +10,90 @@ no backend, account, or sign-in required.
 
 ## Highlights
 
-- 📋 Rich tasks with subtasks, tags, priorities, estimates, links, and due/start dates
-- 🔁 Flexible recurrence (daily/weekly/monthly **and** custom rules)
-- 📅 Calendar with month / week / day views, drag-to-reschedule, and device-calendar sync
-- 🎓 Learning planner: goals, milestones, spaced repetition, study streaks, and a Pomodoro timer
-- 🌟 Motivation page with 200+ curated quotes and favorites
-- 📊 Analytics: trends, streaks, per-category breakdowns, a GitHub-style heatmap, and CSV/PDF export
-- 🔔 Reminders & notifications (web + iOS), with quiet hours and daily agenda
-- ⚡ Natural-language quick-add, saved smart filters, and full-text search
-- 📦 Full JSON backup / restore, CSV import/export, and installable as a PWA (offline-ready)
-
----
-
-## Features in detail
-
-### Tasks & data model
-- Title, notes, category, **tags** (multi-label), priority, and time **estimate**.
-- **Due date** vs. optional **start date**, plus **all-day** vs. timed distinction.
-- **Subtasks / checklists** and attached **links**.
-- **Recurrence:** once / daily / weekly / monthly, with per-occurrence completion, **plus**
-  custom rules (every N days, specific weekdays, “last weekday of month”).
-- Manual ordering for drag-and-drop reordering.
-
-### Smart lists & navigation
-- **My Day**, **Important** (starred), **Planned**, **Tasks**, and per-category lists.
-- **Search** across titles and notes; **saved / smart filters**.
-- **Quick-add** natural language, e.g. `gym tomorrow 6pm !high #health` parses the date, time,
-  priority, and tag automatically.
-
-### Calendar
-- **Month**, **week**, and **day** views with an agenda **timeline**.
-- **Drag tasks between dates** to reschedule.
-- Optional two-way **device calendar sync** (Apple/Google via `expo-calendar`) on native builds.
-
-### Learning planner
-- **Goals** with target dates and **milestone** checklists.
-- **Spaced-repetition** review scheduling and **study streaks**.
-- **Pomodoro / focus timer** that logs study sessions against a goal.
-- **Resource library** per goal (courses, books, videos, articles, links).
-
-### Motivation
-- 200+ curated quotes across **Chinese wisdom** (Confucius, Lao Tzu, Sun Tzu…),
-  **Steve Jobs**, **Classic**, and **Modern** voices.
-- Deterministic **“quote of the day,”** category filters, shuffle, copy, and **favorites**.
-
-### Analytics
-- Done-today, completion **streak** 🔥, 30-day completion rate, weekly velocity.
-- **Trends over time**, per-category / per-goal breakdowns, and time-spent charts.
-- GitHub-style **activity heatmap**.
-- **Export** reports (CSV/PDF) and **import** data (CSV).
-
-### Reminders & notifications
-- Local notifications on **web** (Notification API + service worker) and **iOS** (`expo-notifications`).
-- **Multiple reminders** per task and **recurring** reminders that roll forward.
-- **Quiet hours**, per-category toggles, and a daily **“My Day” agenda** summary.
-
-### Backup, PWA & UX
-- **Full JSON backup / restore** of every store (tasks, goals, logs, sessions, settings, filters).
-- **Installable PWA** with offline caching via a service worker.
-- First-run onboarding, empty states, and a dark, Microsoft To Do–inspired interface that adapts
-  between a desktop sidebar layout and a mobile tab bar.
-
----
-
-## Tech stack
-
-| Concern       | Choice                                                              |
-|---------------|--------------------------------------------------------------------|
-| UI / runtime  | Expo SDK 56, React Native 0.85, `react-native-web`                 |
-| Language      | TypeScript (strict)                                                 |
-| State         | Zustand (with `persist` middleware)                                 |
-| Persistence   | `@react-native-async-storage/async-storage`                        |
-| Dates         | date-fns                                                            |
-| Native extras | `expo-notifications`, `expo-calendar`, `expo-haptics`              |
-| Web extras    | Service worker (PWA offline + notifications), web app manifest      |
+- 📋 Rich tasks with subtasks, tags, priorities, estimates, links, due dates, and recurrence
+- 📅 Calendar — month/week/day views, drag-to-reschedule, completion-day routing, device sync
+- 🎓 Learning planner — goals, milestones, spaced repetition, Pomodoro timer, study streaks
+- 🌟 Motivation — 200+ curated quotes with favorites and live search
+- 📊 Analytics — trends, streaks, heatmap, CSV/PDF export
+- 🔔 Local reminders & notifications (Web, iOS, desktop) with quiet hours
+- ⚡ Natural-language quick-add (`gym tomorrow 6pm !high #health`)
+- 📦 Full JSON backup/restore, installable as a PWA, offline-ready
 
 ---
 
 ## Getting started
 
-> Requires **Node.js 18+** and **npm**. See [`HOW_TO_START.md`](./HOW_TO_START.md) for a more
-> detailed walkthrough and troubleshooting.
+Requires **Node.js 18+** and **npm**.
 
 ```bash
 npm install
 ```
 
-### Run on the web
-```bash
-npm run web
-```
-Opens the app via the Metro dev server. Because the app is configured with a GitHub Pages base
-path, the web dev server serves at:
+### Run it
 
-> **http://localhost:8081/todo-app/**
+| Target | Command | Notes |
+|--------|---------|-------|
+| **Web** | `npm run web` | Opens at http://localhost:8081/todo-app/ |
+| **iOS (phone)** | `npm start` → scan QR with Expo Go | Same Wi-Fi required |
+| **iOS (simulator)** | `npm run ios` | macOS + Xcode only |
+| **Windows desktop (dev)** | `npm run desktop` | Runs Electron against the dev build |
 
-(the bare `http://localhost:8081/` will 404 — use the `/todo-app/` path).
+### Build the Windows desktop installer
 
-### Run on iOS
-No Mac required — use **Expo Go** on your iPhone:
+One command produces the installer at `release\To Do Setup.exe`:
+
 ```bash
-npm start
+npm run desktop:build
 ```
-Scan the QR code with the Camera / Expo Go app (phone and computer on the same Wi-Fi). For a native
-simulator build (macOS + Xcode):
-```bash
-npm run ios
-```
+
+That's it. The script web-exports the app to `dist/`, then packages it with `electron-builder`
+into an NSIS installer (~160 MB, x64, unsigned). The `release/` folder is gitignored — distribute
+the `.exe` directly.
+
+Need an unpacked tree (no installer) for fast iteration? Use `npm run desktop:dir`; the executable
+lands at `release\win-unpacked\To Do.exe`.
 
 ---
 
-## Available scripts
+## All scripts
 
-| Command              | What it does                                            |
-|----------------------|---------------------------------------------------------|
-| `npm start`          | Start the Expo dev server (choose web/iOS/Android)      |
-| `npm run web`        | Start directly in the browser                           |
-| `npm run ios`        | Start in the iOS Simulator (macOS only)                 |
-| `npm run android`    | Start in an Android emulator                            |
-| `npm run build:web`  | Export a production web build to `dist/`                |
-| `npm run deploy`     | Publish `dist/` to the `gh-pages` branch (manual path)  |
-| `npx tsc --noEmit`   | Type-check the project                                  |
+| Command | What it does |
+|---------|--------------|
+| `npm start` | Expo dev server (pick a target interactively) |
+| `npm run web` | Web dev server |
+| `npm run ios` / `npm run android` | Native simulator/emulator dev |
+| `npm run desktop` | Launch Electron in dev mode |
+| `npm run desktop:build` | **Build the Windows installer** (`release\To Do Setup.exe`) |
+| `npm run desktop:dir` | Build the unpacked desktop app only (faster) |
+| `npm run build:web` | Static web export to `dist/` |
+| `npm run deploy` | Publish `dist/` to `gh-pages` |
+| `npx tsc --noEmit` | Type-check |
 
 ---
 
-## Deployment (GitHub Pages)
+## Tech stack
 
-The app deploys automatically to GitHub Pages on every push to `main` via
-[`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml), which runs `expo export` and
-publishes the static site.
+Expo SDK 56 · React Native 0.85 · `react-native-web` · TypeScript (strict) · Zustand (persisted) ·
+`@react-native-async-storage/async-storage` · date-fns · Electron 33 · `electron-builder`.
 
-- The base path is set with `experiments.baseUrl: "/todo-app"` in `app.json`, so assets resolve
-  correctly under `https://<user>.github.io/todo-app/`.
-- A `.nojekyll` marker is emitted so the underscore-prefixed `_expo/` folder is served.
-- `src/lib/basePath.ts` resolves the base path at runtime for the manifest, icons, and service
-  worker, so the PWA works both at the domain root and under the subpath.
-
-A manual alternative is `npm run deploy` (uses the `gh-pages` package).
+Native extras: `expo-notifications`, `expo-calendar`, `expo-haptics`.
+Web extras: service worker (offline + notifications), web app manifest.
 
 ---
 
 ## Data & privacy
 
-- **Local-first:** everything is stored on-device; nothing is sent to a server.
-- Zustand persists each store under `learnplan-*` keys (kept stable across the rename to “To Do”
-  so existing data isn’t orphaned).
-- **Backup / restore:** Settings → *Backup & data* exports a full JSON snapshot and restores it on
-  any device. Analytics also supports CSV import/export.
-- **Reset:** clear site data (web) or reinstall / clear app storage (iOS).
+- **Local-first** — everything is stored on-device; nothing is sent to a server.
+- **Backup / restore** — Settings → *Backup & data* exports a full JSON snapshot, importable on
+  any other device. Analytics also supports CSV import/export.
+- **Reset** — clear site data (web), reinstall (iOS), or uninstall (desktop).
 
 ---
 
-## Project structure
+## Deployment
 
-```
-App.tsx                      # Layout (sidebar/tab bar), routing, global modals, PWA bootstrap
-index.ts                     # Expo entry point
-app.json                     # Expo config (name, plugins, web baseUrl)
-public/                      # Web static assets served at the site root
-  manifest.webmanifest       # PWA manifest
-  service-worker.js          # Offline cache + notification handling
-src/
-  types.ts                   # Task, Category, LearningGoal, StudySession, … models
-  theme.ts                   # Colors, spacing, radii, per-list accent themes
-  data/
-    quotes.ts                # 200+ motivation quotes dataset
-  lib/
-    dates.ts                 # Date keys, month grid, formatting helpers
-    recurrence.ts            # Recurrence expansion + completion helpers
-    quickAdd.ts              # Natural-language task parser
-    study.ts                 # Spaced repetition + study-streak logic
-    analytics.ts             # Stats, trends, and heatmap aggregation
-    notifications(.native).ts# Web + iOS notification delivery
-    useReminders.ts          # Reminder scheduling hook
-    calendarSync(.native).ts # Device calendar sync (expo-calendar)
-    backup.ts                # Full JSON backup / restore
-    dataio.ts                # CSV import / export
-    pwa.ts / basePath.ts     # PWA registration + base-path resolution
-    id.ts                    # ID generator
-  store/
-    useStore.ts              # Main persisted store (tasks, categories, goals, logs, sessions)
-    useSettings.ts           # Notification / preferences store
-    useSavedFilters.ts       # Saved smart filters
-    useMotivation.ts         # Motivation favorites
-    useOnboarding.ts         # First-run state
-    useUI.ts                 # Editor modal state
-  components/
-    Sidebar.tsx, ListHeader.tsx, ui.tsx          # Layout & shared UI primitives
-    TaskRow.tsx, TaskListView.tsx, AddTaskBar.tsx
-    TaskEditorModal.tsx, GoalEditorModal.tsx, FocusTimerModal.tsx
-    DayTimeline.tsx, ActivityHeatmap.tsx          # Calendar timeline & analytics heatmap
-    ReminderBanner.tsx, OnboardingOverlay.tsx
-  screens/
-    HomeScreen.tsx, MyDayScreen.tsx, ImportantScreen.tsx, PlannedScreen.tsx
-    ListScreen.tsx, CalendarScreen.tsx
-    LearningScreen.tsx, MotivationScreen.tsx
-    AnalyticsScreen.tsx, DailyLogScreen.tsx
-    SearchScreen.tsx, SettingsScreen.tsx
-```
+Pushes to `main` auto-deploy the web build to GitHub Pages via
+[`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml). The base path is set with
+`experiments.baseUrl: "/todo-app"` in `app.json` so assets resolve under the subpath.
 
----
-
-## Notes
-
-- Date and time use simple typed fields (`yyyy-MM-dd`, `HH:mm`) with quick-pick chips, keeping the
-  picker identical and dependency-free across web and iOS.
-- Time-based notifications for a fully closed browser tab would require Web Push (server + VAPID),
-  which is intentionally out of scope for this local-first app.
+See [`HOW_TO_START.md`](./HOW_TO_START.md) for a longer dev walkthrough and troubleshooting tips.
