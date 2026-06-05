@@ -63,6 +63,13 @@ export interface Task {
   skippedDates?: string[];
   /** Wall-clock time the user marked each occurrence done, 'HH:mm' keyed by dateKey. */
   completedTimes?: Record<string, string>;
+  /**
+   * Actual calendar day ('yyyy-MM-dd') the user clicked complete, keyed by the
+   * scheduled-occurrence dateKey. Set on completion, cleared on undo. Used by
+   * the calendar's "completed date" view; falls back to the scheduled key when
+   * missing (e.g. data created before this field was tracked).
+   */
+  completedOn?: Record<string, string>;
   createdAt: string;
   type: ItemType;
   /** Linked learning goal (for study sessions) */

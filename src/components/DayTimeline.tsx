@@ -71,6 +71,16 @@ function packLanes(blocks: Omit<Block, 'lane' | 'lanes'>[]): Block[] {
   return placed;
 }
 
+export interface TimelineOccurrence {
+  task: Task;
+  /**
+   * The scheduled date of the occurrence. May differ from the timeline's
+   * `dateKey` when a completed occurrence is being displayed on its actual
+   * completion day rather than its scheduled day.
+   */
+  scheduledDate: string;
+}
+
 export function DayTimeline({
   dateKey,
   occurrences,
@@ -80,7 +90,7 @@ export function DayTimeline({
   accent,
 }: {
   dateKey: string;
-  occurrences: Task[];
+  occurrences: TimelineOccurrence[];
   deviceEvents: DeviceEvent[];
   onPressTask: (task: Task) => void;
   onCreateAt: (time: string) => void;
@@ -95,22 +105,22 @@ export function DayTimeline({
     const allDayItems: { id: string; title: string; color: string; task?: Task }[] = [];
     const raw: Omit<Block, 'lane' | 'lanes'>[] = [];
 
-    for (const t of occurrences) {
+    for (const { task: t, scheduledDate } of occurrences) {
       const start = t.allDay ? null : minutesOfDay(t.time ?? '');
       if (start == null) {
-        allDayItems.push({ id: t.id, title: t.title, color: catColor(t.categoryId), task: t });
+        allDayItems.push({ id: `${t.id}|${scheduledDate}`, title: t.title, color: catColor(t.categoryId), task: t });
         continue;
       }
       const dur = t.estimateMinutes && t.estimateMinutes > 0 ? t.estimateMinutes : 30;
       raw.push({
-        id: `t-${t.id}`,
+        id: `t-${t.id}-${scheduledDate}`,
         title: t.title,
         startMin: start,
         endMin: Math.min(24 * 60, start + dur),
         kind: 'task',
         task: t,
         color: catColor(t.categoryId),
-        done: isOccurrenceDone(t, dateKey),
+        done: isOccurrenceDone(t, scheduledDate),
       });
     }
 
@@ -133,7 +143,7 @@ export function DayTimeline({
     }
 
     return { allDayItems, blocks: packLanes(raw) };
-  }, [occurrences, deviceEvents, dateKey]);
+  }, [occurrences, deviceEvents]);
 
   const scrollRef = useRef<ScrollView>(null);
   const isToday = dateKey === todayKey();

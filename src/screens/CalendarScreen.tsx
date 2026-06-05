@@ -6,7 +6,7 @@ import { useUI } from '../store/useUI';
 import { TaskRow } from '../components/TaskRow';
 import { ListHeader } from '../components/ListHeader';
 import { AddTaskBar } from '../components/AddTaskBar';
-import { DayTimeline } from '../components/DayTimeline';
+import { DayTimeline, TimelineOccurrence } from '../components/DayTimeline';
 import { Button, EmptyState, SectionTitle, Chip } from '../components/ui';
 import { Task } from '../types';
 import {
@@ -24,7 +24,7 @@ import {
   weekDays,
   startOfMonth,
 } from '../lib/dates';
-import { occursOn, isOccurrenceDone, isOccurrenceSkipped } from '../lib/recurrence';
+import { occursOn, occurrenceStatus } from '../lib/recurrence';
 import {
   calendarSyncSupported,
   getCalendarPermission,
@@ -41,6 +41,20 @@ const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 type ViewMode = 'month' | 'week' | 'day';
 type StatusFilter = 'all' | 'pending' | 'completed';
 type RepeatFilter = 'all' | 'recurring' | 'once';
+
+// A unified per-day item. `displayDate` is the day this item shows up on:
+// - for pending/skipped: same as scheduledDate
+// - for completed: t.completedOn[scheduledDate] ?? scheduledDate (the day the
+//   user actually marked it done). This means a task scheduled on the 5th but
+//   ticked off on the 6th appears on the 6th, while still routing toggles to
+//   its original scheduled occurrence record (scheduledDate=5).
+type OccurrenceStatus = 'pending' | 'completed' | 'skipped';
+interface DayItem {
+  task: Task;
+  scheduledDate: string;
+  displayDate: string;
+  status: OccurrenceStatus;
+}
 
 const ACCENT = listThemes.calendar.accent;
 
@@ -105,72 +119,145 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
   };
 
   // ----- filtering -----
-  const matches = useMemo(() => {
-    return (t: Task, dateKey: string) => {
+  // Repeat + category filter only; the status filter is applied to DayItem
+  // values further down because it needs to inspect each item's status.
+  const repeatCatMatches = useMemo(() => {
+    return (t: Task) => {
       if (repeat === 'recurring' && t.recurrence === 'none' && !t.recurrenceRule) return false;
       if (repeat === 'once' && (t.recurrence !== 'none' || t.recurrenceRule)) return false;
       if (category !== 'all' && t.categoryId !== category) return false;
-      const done = isOccurrenceDone(t, dateKey);
-      if (status === 'completed' && !done) return false;
-      if (status === 'pending' && done) return false;
       return true;
     };
-  }, [status, repeat, category]);
+  }, [repeat, category]);
 
-  const exportDay = async () => {
-    const items = tasks.filter((t) => occursOn(t, selected) && matches(t, selected));
-    let ok = 0;
-    for (const t of items) {
-      const id = await exportTaskToCalendar(t, selected);
-      if (id) ok++;
-    }
-    flash(ok > 0 ? `Exported ${ok} task${ok > 1 ? 's' : ''}` : 'Nothing to export');
-    if (calPerm === 'granted') setDeviceEvents(await importDeviceEvents(selected));
+  const statusMatches = (s: OccurrenceStatus) => {
+    if (status === 'all') return true;
+    if (status === 'completed') return s === 'completed';
+    // 'pending' filter excludes skipped, matching the summary chip's meaning.
+    return s === 'pending';
   };
 
   const grid = useMemo(() => monthGrid(month), [month]);
   const monthIdx = month.getMonth();
   const week = useMemo(() => weekDays(fromKey(selected)), [selected]);
 
-  const countsByDay = useMemo(() => {
-    const map: Record<string, { total: number; done: number }> = {};
-    const keys = view === 'week' ? week : grid.map((d) => toKey(d));
-    for (const key of keys) {
-      let total = 0;
-      let done = 0;
-      for (const t of tasks) {
-        if (occursOn(t, key) && matches(t, key)) {
-          total++;
-          if (isOccurrenceDone(t, key)) done++;
-        }
+  // ----- per-day items, routed by completion day -----
+  //
+  // For every visible day key, we build the list of items that should appear
+  // there. Pending/skipped occurrences route to their scheduledDate; completed
+  // occurrences route to their actual completion day (`completedOn` map),
+  // falling back to scheduledDate for legacy entries.
+  //
+  // The visible-key set covers the month grid, the current week strip, and the
+  // selected day, so day/week/month views all read from this same map.
+  const visibleKeySet = useMemo(() => {
+    const s = new Set<string>();
+    for (const d of grid) s.add(toKey(d));
+    for (const k of week) s.add(k);
+    s.add(selected);
+    return s;
+  }, [grid, week, selected]);
+
+  const itemsByDay = useMemo(() => {
+    const map: Record<string, DayItem[]> = {};
+    const push = (day: string, item: DayItem) => {
+      if (!visibleKeySet.has(day)) return;
+      (map[day] ?? (map[day] = [])).push(item);
+    };
+
+    for (const t of tasks) {
+      if (!repeatCatMatches(t)) continue;
+
+      // Completed occurrences: place each one on its actual completion day.
+      // We walk completedDates so we still surface historical completions
+      // even when the task no longer "occursOn" the original scheduled day
+      // (e.g., a one-time task whose date was edited afterwards).
+      for (const sched of t.completedDates) {
+        const displayDate = t.completedOn?.[sched] ?? sched;
+        push(displayDate, { task: t, scheduledDate: sched, displayDate, status: 'completed' });
       }
-      map[key] = { total, done };
+
+      // Pending / skipped occurrences: walk every visible key and ask whether
+      // the task occurs on that day. Skip completed ones here — they were
+      // already emitted above under their actual completion day.
+      for (const key of visibleKeySet) {
+        if (!occursOn(t, key)) continue;
+        const st = occurrenceStatus(t, key);
+        if (st === 'completed') continue;
+        push(key, { task: t, scheduledDate: key, displayDate: key, status: st });
+      }
+    }
+
+    // Stable sort: pending first by scheduled time, then completed by
+    // completion time, then alphabetical tiebreak.
+    const itemTime = (it: DayItem) => {
+      if (it.status === 'completed') {
+        return `2_${it.task.completedTimes?.[it.scheduledDate] ?? '99:99'}`;
+      }
+      return `1_${it.task.time ?? '99:99'}`;
+    };
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => itemTime(a).localeCompare(itemTime(b)) || a.task.title.localeCompare(b.task.title));
     }
     return map;
-  }, [grid, week, view, tasks, matches]);
+  }, [tasks, repeatCatMatches, visibleKeySet]);
 
-  const allOnDay = useMemo(
-    () =>
-      tasks
-        .filter((t) => occursOn(t, selected))
-        .sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99')),
-    [tasks, selected],
-  );
-  const dayTasks = useMemo(() => allOnDay.filter((t) => matches(t, selected)), [allOnDay, selected, matches]);
+  // Counts per day used by dots and the summary chip. Ignores the status
+  // filter so toggling "Completed only" doesn't change how many dots a day
+  // shows — repeat/category filters still apply via repeatCatMatches.
+  const countsByDay = useMemo(() => {
+    const map: Record<string, { total: number; done: number; pending: number; skipped: number }> = {};
+    for (const key of visibleKeySet) {
+      const items = itemsByDay[key] ?? [];
+      let done = 0;
+      let pending = 0;
+      let skipped = 0;
+      for (const it of items) {
+        if (it.status === 'completed') done++;
+        else if (it.status === 'skipped') skipped++;
+        else pending++;
+      }
+      map[key] = { total: items.length, done, pending, skipped };
+    }
+    return map;
+  }, [itemsByDay, visibleKeySet]);
+
+  // Items on the selected day after the status filter — what's actually shown.
+  const dayItems = useMemo(() => {
+    const items = itemsByDay[selected] ?? [];
+    return items.filter((it) => statusMatches(it.status));
+  }, [itemsByDay, selected, status]);
 
   const summary = useMemo(() => {
-    let total = 0;
-    let done = 0;
-    let skipped = 0;
+    const c = countsByDay[selected] ?? { total: 0, done: 0, pending: 0, skipped: 0 };
     let recurring = 0;
-    for (const t of allOnDay) {
-      total++;
-      if (isOccurrenceDone(t, selected)) done++;
-      else if (isOccurrenceSkipped(t, selected)) skipped++;
-      if (t.recurrence !== 'none' || t.recurrenceRule) recurring++;
+    for (const it of itemsByDay[selected] ?? []) {
+      if (it.task.recurrence !== 'none' || it.task.recurrenceRule) recurring++;
     }
-    return { total, done, skipped, pending: total - done - skipped, recurring, once: total - recurring };
-  }, [allOnDay, selected]);
+    return { ...c, recurring, once: c.total - recurring };
+  }, [countsByDay, itemsByDay, selected]);
+
+  // Timeline shape used by DayTimeline (day + week views).
+  const dayTimelineOccurrences = useMemo<TimelineOccurrence[]>(
+    () => dayItems.map((it) => ({ task: it.task, scheduledDate: it.scheduledDate })),
+    [dayItems],
+  );
+
+  const exportDay = async () => {
+    // Only export items scheduled for the selected day — pulling completed
+    // entries from other scheduled dates would create duplicate events on
+    // the wrong day.
+    const items = (itemsByDay[selected] ?? []).filter(
+      (it) => it.scheduledDate === selected && statusMatches(it.status),
+    );
+    let ok = 0;
+    for (const it of items) {
+      const id = await exportTaskToCalendar(it.task, it.scheduledDate);
+      if (id) ok++;
+    }
+    flash(ok > 0 ? `Exported ${ok} task${ok > 1 ? 's' : ''}` : 'Nothing to export');
+    if (calPerm === 'granted') setDeviceEvents(await importDeviceEvents(selected));
+  };
 
   // ----- navigation -----
   const goPrev = () => {
@@ -252,7 +339,7 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
           ))}
         </View>
         {calSupported && (
-          <View style={styles.syncRow}>
+          <View style={[styles.syncRow, { marginLeft: 'auto' }]}>
             {calPerm === 'granted' ? (
               <Button title="Export day" small variant="ghost" onPress={exportDay} />
             ) : (
@@ -275,10 +362,36 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
         </Pressable>
       </View>
 
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryDate}>{prettyDate(selected)}</Text>
+        <View style={styles.summaryChips}>
+          <View style={styles.summaryChip}>
+            <View style={[styles.summaryDot, { backgroundColor: colors.success }]} />
+            <Text style={styles.summaryText}>
+              <Text style={styles.summaryNum}>{summary.done}</Text> done
+            </Text>
+          </View>
+          <View style={styles.summaryChip}>
+            <View style={[styles.summaryDot, { backgroundColor: ACCENT }]} />
+            <Text style={styles.summaryText}>
+              <Text style={styles.summaryNum}>{summary.pending}</Text> pending
+            </Text>
+          </View>
+          {summary.skipped > 0 ? (
+            <View style={styles.summaryChip}>
+              <View style={[styles.summaryDot, { backgroundColor: colors.warning }]} />
+              <Text style={styles.summaryText}>
+                <Text style={styles.summaryNum}>{summary.skipped}</Text> skipped
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
       {view === 'day' ? (
         <DayTimeline
           dateKey={selected}
-          occurrences={dayTasks}
+          occurrences={dayTimelineOccurrences}
           deviceEvents={deviceEvents}
           onPressTask={openEdit}
           onCreateAt={() => openNew({ date: selected, categoryId: category !== 'all' ? category : undefined })}
@@ -289,7 +402,7 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
           <View style={styles.weekStrip}>
             {week.map((key) => {
               const d = fromKey(key);
-              const info = countsByDay[key] ?? { total: 0, done: 0 };
+              const info = countsByDay[key] ?? { total: 0, done: 0, pending: 0, skipped: 0 };
               const isSel = key === selected;
               const isToday = key === todayKey();
               return (
@@ -298,18 +411,22 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
                   <View style={[styles.weekDayNum, isSel && styles.weekDayNumSel, isToday && !isSel && styles.weekDayNumToday]}>
                     <Text style={[styles.weekDayNumText, isSel && styles.weekSelText]}>{d.getDate()}</Text>
                   </View>
-                  {info.total > 0 ? (
-                    <View style={[styles.weekDot, { backgroundColor: info.done === info.total ? colors.success : ACCENT }]} />
-                  ) : (
-                    <View style={styles.weekDotEmpty} />
-                  )}
+                  <View style={styles.weekDotRow}>
+                    {info.done > 0 ? (
+                      <View style={[styles.weekDot, { backgroundColor: colors.success }]} />
+                    ) : null}
+                    {info.pending > 0 ? (
+                      <View style={[styles.weekDot, { backgroundColor: ACCENT }]} />
+                    ) : null}
+                    {info.done === 0 && info.pending === 0 ? <View style={styles.weekDotEmpty} /> : null}
+                  </View>
                 </Pressable>
               );
             })}
           </View>
           <DayTimeline
             dateKey={selected}
-            occurrences={dayTasks}
+            occurrences={dayTimelineOccurrences}
             deviceEvents={deviceEvents}
             onPressTask={openEdit}
             onCreateAt={() => openNew({ date: selected, categoryId: category !== 'all' ? category : undefined })}
@@ -329,7 +446,7 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
           <View ref={gridRef} style={styles.grid} collapsable={false}>
             {grid.map((d) => {
               const key = toKey(d);
-              const info = countsByDay[key] ?? { total: 0, done: 0 };
+              const info = countsByDay[key] ?? { total: 0, done: 0, pending: 0, skipped: 0 };
               const inMonth = d.getMonth() === monthIdx;
               const isSel = key === selected;
               const isToday = key === todayKey();
@@ -341,16 +458,21 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
                       {d.getDate()}
                     </Text>
                     <View style={styles.dotsRow}>
-                      {info.total > 0 && (
+                      {info.done > 0 && (
+                        <View
+                          style={[
+                            styles.dot,
+                            { backgroundColor: isSel ? colors.white : colors.success },
+                          ]}
+                        />
+                      )}
+                      {info.pending > 0 && (
                         <View
                           style={[
                             styles.dot,
                             {
-                              backgroundColor: isSel
-                                ? colors.white
-                                : info.done === info.total
-                                ? colors.success
-                                : colors.primary,
+                              backgroundColor: isSel ? colors.white : colors.primary,
+                              opacity: isSel ? 0.6 : 1,
                             },
                           ]}
                         />
@@ -397,29 +519,30 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
           <SectionTitle right={<Button title="+ Add" small onPress={() => openNew({ date: selected, categoryId: category !== 'all' ? category : undefined })} />}>
             {prettyDate(selected)}
           </SectionTitle>
-          {dayTasks.length > 0 && <Text style={styles.dragTip}>Tip: drag the ⠿ handle onto another day to reschedule.</Text>}
+          {dayItems.some((it) => it.scheduledDate === selected && it.status !== 'completed') ? (
+            <Text style={styles.dragTip}>Tip: drag the ⠿ handle onto another day to reschedule.</Text>
+          ) : null}
 
-          {dayTasks.length === 0 ? (
+          {dayItems.length === 0 ? (
             <EmptyState
               icon="🗓️"
-              title={allOnDay.length === 0 ? 'No tasks this day' : 'No tasks match filters'}
-              subtitle={allOnDay.length === 0 ? undefined : 'Try adjusting the filters above'}
+              title={(itemsByDay[selected]?.length ?? 0) === 0 ? 'No tasks this day' : 'No tasks match filters'}
+              subtitle={(itemsByDay[selected]?.length ?? 0) === 0 ? undefined : 'Try adjusting the filters above'}
             />
           ) : (
-            dayTasks.map((t) => (
-              <DragRow key={t.id} task={t} onPickUp={pickUp} onMove={moveDrag} onDrop={dropDrag}>
-                <View style={{ flex: 1 }}>
-                  <TaskRow
-                    task={t}
-                    dateKey={selected}
-                    done={isOccurrenceDone(t, selected)}
-                    skipped={isOccurrenceSkipped(t, selected)}
-                    onToggle={() => toggleComplete(t.id, selected)}
-                    onSkip={() => toggleSkip(t.id, selected)}
-                    onPress={() => openEdit(t)}
-                  />
-                </View>
-              </DragRow>
+            dayItems.map((it) => (
+              <DayItemRow
+                key={`${it.task.id}|${it.scheduledDate}|${it.status}`}
+                item={it}
+                selected={selected}
+                draggable={it.scheduledDate === selected && it.status !== 'completed'}
+                onPickUp={pickUp}
+                onMove={moveDrag}
+                onDrop={dropDrag}
+                onToggle={() => toggleComplete(it.task.id, it.scheduledDate)}
+                onSkip={() => toggleSkip(it.task.id, it.scheduledDate)}
+                onPress={() => openEdit(it.task)}
+              />
             ))
           )}
           <View style={{ height: spacing(2) }} />
@@ -455,36 +578,74 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
-function DragRow({
-  task,
+// Single row used by the month-view day list. Wraps a TaskRow and, when the
+// item is scheduled for the displayed day and not completed, attaches a drag
+// handle so it can be moved to another day on the month grid. Completed
+// occurrences from other scheduled dates render with a "was scheduled X" note
+// instead of a drag handle, since rescheduling a finished item is ambiguous.
+function DayItemRow({
+  item,
+  selected,
+  draggable,
   onPickUp,
   onMove,
   onDrop,
-  children,
+  onToggle,
+  onSkip,
+  onPress,
 }: {
-  task: Task;
+  item: DayItem;
+  selected: string;
+  draggable: boolean;
   onPickUp: (task: Task, x: number, y: number) => void;
   onMove: (x: number, y: number) => void;
   onDrop: (x: number, y: number) => void;
-  children: React.ReactNode;
+  onToggle: () => void;
+  onSkip: () => void;
+  onPress: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
   const pan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => onPickUp(task, e.nativeEvent.pageX, e.nativeEvent.pageY),
+      onStartShouldSetPanResponder: () => draggable,
+      onMoveShouldSetPanResponder: () => draggable,
+      onPanResponderGrant: (e) => onPickUp(item.task, e.nativeEvent.pageX, e.nativeEvent.pageY),
       onPanResponderMove: (e) => onMove(e.nativeEvent.pageX, e.nativeEvent.pageY),
       onPanResponderRelease: (e) => onDrop(e.nativeEvent.pageX, e.nativeEvent.pageY),
       onPanResponderTerminate: (e) => onDrop(e.nativeEvent.pageX, e.nativeEvent.pageY),
     }),
   ).current;
 
+  const offset = item.scheduledDate !== selected;
+  const time =
+    item.status === 'completed' ? item.task.completedTimes?.[item.scheduledDate] : undefined;
+  const note =
+    item.status === 'completed' && (offset || time)
+      ? `${time ? `Done at ${time}` : 'Completed'}${
+          offset ? ` · was scheduled ${prettyDate(item.scheduledDate)}` : ''
+        }`
+      : null;
+
   return (
-    <View style={styles.dragRow}>
-      {children}
-      <View {...pan.panHandlers} style={styles.grip} hitSlop={8}>
-        <Text style={styles.gripText}>⠿</Text>
+    <View>
+      {note ? <Text style={styles.completedNote}>{note}</Text> : null}
+      <View style={styles.dragRow}>
+        <View style={{ flex: 1 }}>
+          <TaskRow
+            task={item.task}
+            dateKey={item.scheduledDate}
+            done={item.status === 'completed'}
+            skipped={item.status === 'skipped'}
+            onToggle={onToggle}
+            onSkip={onSkip}
+            onPress={onPress}
+          />
+        </View>
+        {draggable ? (
+          <View {...pan.panHandlers} style={styles.grip} hitSlop={8}>
+            <Text style={styles.gripText}>⠿</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -498,9 +659,11 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    flexWrap: 'wrap',
     paddingHorizontal: spacing(1.5),
     paddingTop: spacing(1),
+    gap: spacing(1),
   },
   segment: {
     flexDirection: 'row',
@@ -515,6 +678,15 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   segText: { color: colors.textDim, fontSize: 13, fontWeight: '600', fontFamily },
   segTextActive: { color: colors.white, fontWeight: '700' },
   syncRow: { flexDirection: 'row', alignItems: 'center' },
+  completedNote: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontFamily,
+    fontWeight: '600',
+    marginLeft: spacing(4),
+    marginBottom: 2,
+    letterSpacing: 0.3,
+  },
   syncMsg: { color: ACCENT, fontSize: 12, textAlign: 'center', paddingTop: spacing(0.5), fontFamily },
   navRow: {
     flexDirection: 'row',
@@ -555,8 +727,32 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   cellNum: { color: colors.text, fontSize: 14, fontWeight: '600', fontFamily },
   cellNumSel: { color: colors.white, fontWeight: '800' },
   cellMuted: { color: colors.textFaint },
-  dotsRow: { flexDirection: 'row', height: 8, alignItems: 'center', marginTop: 2 },
+  dotsRow: { flexDirection: 'row', height: 8, alignItems: 'center', marginTop: 2, gap: 3 },
   dot: { width: 6, height: 6, borderRadius: 3 },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing(1.5),
+    paddingBottom: spacing(1),
+    gap: spacing(1),
+  },
+  summaryDate: { color: colors.textDim, fontSize: 12, fontWeight: '700', fontFamily, letterSpacing: 0.3, textTransform: 'uppercase' },
+  summaryChips: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing(0.75) },
+  summaryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing(1),
+    paddingVertical: spacing(0.25),
+  },
+  summaryDot: { width: 7, height: 7, borderRadius: 4, marginRight: spacing(0.625) },
+  summaryText: { color: colors.textDim, fontSize: 12, fontFamily, fontWeight: '500' },
+  summaryNum: { color: colors.text, fontWeight: '800' },
+  weekDotRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing(0.5), gap: 3, height: 6 },
   filterLabel: { color: colors.textDim, fontSize: 12, fontWeight: '700', fontFamily, marginTop: spacing(1), marginBottom: spacing(0.5), textTransform: 'uppercase', letterSpacing: 0.5 },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap' },
   dragTip: { color: colors.textFaint, fontSize: 11, marginBottom: spacing(1), fontFamily },
@@ -588,6 +784,6 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   weekDayNumToday: { borderWidth: 1, borderColor: colors.primary },
   weekDayNumText: { color: colors.text, fontSize: 15, fontWeight: '700', fontFamily },
   weekSelText: { color: colors.white },
-  weekDot: { width: 6, height: 6, borderRadius: 3, marginTop: spacing(0.5) },
-  weekDotEmpty: { width: 6, height: 6, marginTop: spacing(0.5) },
+  weekDot: { width: 6, height: 6, borderRadius: 3 },
+  weekDotEmpty: { width: 6, height: 6 },
 });

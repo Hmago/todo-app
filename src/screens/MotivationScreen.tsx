@@ -8,37 +8,30 @@ import {
   Platform,
   Animated,
   Easing,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   radius,
   spacing,
   fontFamily,
-  shadow,
-  listThemes,
   useTheme,
   useThemedStyles,
   Palette,
 } from '../theme';
 import { ListHeader } from '../components/ListHeader';
 import { EmptyState } from '../components/ui';
+import { Tooltip } from '../components/Tooltip';
 import { todayKey } from '../lib/dates';
 import { QUOTES, QUOTE_CATEGORIES, Quote, QuoteCategory } from '../data/quotes';
 import { useMotivation } from '../store/useMotivation';
 
-// Muted warm-bronze gradient — keeps the literary character of a leather-bound
-// page without the eye-catching brightness of pure gold.
-const HERO_GRADIENT = ['#2a241a', '#3e3624', '#574934'] as const;
-// White ink reads cleanly on the darker hero. DIM is a warm off-white for
-// secondary text (category line, count, etc).
-const HERO_INK = '#f5efe2';
-const HERO_INK_DIM = '#c2b69a';
-
-// A serif gives the hero a more "literary" feel without pulling in a custom font.
-const serifFamily = Platform.select({
-  web: 'Georgia, "Times New Roman", serif',
-  default: undefined,
-}) as string | undefined;
+// Modern indigo→violet "evening reflection" palette — calm, deep, and modern.
+// Replaces the previous bronze "leather-bound book" look that felt dated.
+const HERO_GRADIENT = ['#1e1b4b', '#312e81', '#5b21b6'] as const;
+const HERO_INK = '#f8fafc';
+const HERO_INK_DIM = '#c7d2fe';
+const HERO_HEART_ACTIVE = '#fb7185';
 
 type Filter = 'all' | 'favorites' | QuoteCategory;
 
@@ -77,7 +70,7 @@ function todayIndex(): number {
   return n % QUOTES.length;
 }
 
-// ──────────────────────────── Hero card ────────────────────────────
+// ──────────────────────────── Hero ────────────────────────────
 
 function HeroCard({
   quote,
@@ -111,19 +104,18 @@ function HeroCard({
   const styles = useThemedStyles(makeStyles);
   const meta = categoryMeta(quote.category);
 
-  // Subtle fade + lift whenever the displayed quote changes.
+  // Soft cross-fade whenever the displayed quote changes.
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     fade.setValue(0);
     Animated.timing(fade, {
       toValue: 1,
-      duration: 260,
+      duration: 280,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, [quote.id, fade]);
-
-  const translateY = fade.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
+  const translateY = fade.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
 
   return (
     <View style={styles.hero}>
@@ -133,90 +125,104 @@ function HeroCard({
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <Text style={styles.heroGlyph} pointerEvents="none">“</Text>
+      {/* Soft glow accent at top-right for depth without the old "“" glyph. */}
+      <View style={styles.heroGlow} pointerEvents="none" />
 
       <View style={styles.heroTop}>
-        <View style={styles.heroKickerWrap}>
-          <View style={styles.heroKickerDot} />
-          <Text style={styles.heroKicker}>
-            {isToday ? 'QUOTE OF THE DAY' : 'INSPIRATION'}
-          </Text>
+        <View style={styles.heroTagWrap}>
+          <View style={[styles.heroTagDot, { backgroundColor: meta.accent }]} />
+          <Text style={styles.heroTag}>{meta.label}</Text>
         </View>
-        <View style={styles.heroTopRight}>
-          {!isToday ? (
-            <Pressable
-              onPress={onBackToToday}
-              hitSlop={8}
-              style={({ hovered }: any) => [styles.heroChip, hovered && styles.heroChipHover]}
-            >
-              <Text style={styles.heroChipText}>Today</Text>
-            </Pressable>
-          ) : null}
-          <Pressable
-            onPress={onRandom}
-            hitSlop={8}
-            style={({ hovered }: any) => [styles.heroChip, hovered && styles.heroChipHover]}
-          >
-            <Text style={styles.heroChipText}>↻  Surprise</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.heroCount}>{index + 1} / {total}</Text>
       </View>
 
-      <Animated.View style={{ opacity: fade, transform: [{ translateY }] }}>
+      <Animated.View style={[styles.heroBody, { opacity: fade, transform: [{ translateY }] }]}>
         <Text style={styles.heroQuote}>{quote.text}</Text>
-        <View style={styles.heroAuthorRow}>
-          <View style={styles.heroDash} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.heroAuthor} numberOfLines={1}>{quote.author}</Text>
-            <Text style={styles.heroCat} numberOfLines={1}>
-              {meta.icon ? meta.icon + '  ' : ''}{meta.label}
-            </Text>
-          </View>
-        </View>
+        <Text style={styles.heroAuthor} numberOfLines={1}>{quote.author}</Text>
       </Animated.View>
 
       <View style={styles.heroFooter}>
         <View style={styles.heroActions}>
-          <Pressable
-            onPress={onToggleFavorite}
-            hitSlop={8}
-            style={({ hovered }: any) => [styles.heroIconBtn, hovered && styles.heroIconBtnHover]}
-          >
-            <Text style={[styles.heroIcon, favorite && styles.heroHeartActive]}>
-              {favorite ? '♥' : '♡'}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={onCopy}
-            hitSlop={8}
-            style={({ hovered }: any) => [styles.heroIconBtn, hovered && styles.heroIconBtnHover]}
-          >
-            <Text style={styles.heroIcon}>{copied ? '✓' : '⧉'}</Text>
-          </Pressable>
-          <Pressable
-            onPress={onShare}
-            hitSlop={8}
-            style={({ hovered }: any) => [styles.heroIconBtn, hovered && styles.heroIconBtnHover]}
-          >
-            <Text style={styles.heroIcon}>↗</Text>
-          </Pressable>
+          <Tooltip label={favorite ? 'Remove from favorites' : 'Save to favorites'}>
+            <Pressable
+              onPress={onToggleFavorite}
+              hitSlop={8}
+              accessibilityLabel={favorite ? 'Remove from favorites' : 'Save to favorites'}
+              style={({ hovered }: any) => [styles.heroIconBtn, hovered && styles.heroIconBtnHover]}
+            >
+              <Text style={[styles.heroIcon, favorite && { color: HERO_HEART_ACTIVE }]}>
+                {favorite ? '♥' : '♡'}
+              </Text>
+            </Pressable>
+          </Tooltip>
+          <Tooltip label={copied ? 'Copied!' : 'Copy quote'}>
+            <Pressable
+              onPress={onCopy}
+              hitSlop={8}
+              accessibilityLabel="Copy quote"
+              style={({ hovered }: any) => [styles.heroIconBtn, hovered && styles.heroIconBtnHover]}
+            >
+              <Text style={styles.heroIcon}>{copied ? '✓' : '⧉'}</Text>
+            </Pressable>
+          </Tooltip>
+          <Tooltip label="Share">
+            <Pressable
+              onPress={onShare}
+              hitSlop={8}
+              accessibilityLabel="Share quote"
+              style={({ hovered }: any) => [styles.heroIconBtn, hovered && styles.heroIconBtnHover]}
+            >
+              <Text style={styles.heroIcon}>↗</Text>
+            </Pressable>
+          </Tooltip>
+          <Tooltip label="Random quote">
+            <Pressable
+              onPress={onRandom}
+              hitSlop={8}
+              accessibilityLabel="Random quote"
+              style={({ hovered }: any) => [styles.heroIconBtn, hovered && styles.heroIconBtnHover]}
+            >
+              <Text style={styles.heroIcon}>⟲</Text>
+            </Pressable>
+          </Tooltip>
         </View>
         <View style={styles.heroNav}>
-          <Pressable
-            onPress={onPrev}
-            hitSlop={8}
-            style={({ hovered }: any) => [styles.heroNavBtn, hovered && styles.heroNavBtnHover]}
-          >
-            <Text style={styles.heroNavIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.heroCount}>{index + 1} / {total}</Text>
-          <Pressable
-            onPress={onNext}
-            hitSlop={8}
-            style={({ hovered }: any) => [styles.heroNavBtn, hovered && styles.heroNavBtnHover]}
-          >
-            <Text style={styles.heroNavIcon}>›</Text>
-          </Pressable>
+          {!isToday ? (
+            <Tooltip label="Back to today's quote">
+              <Pressable
+                onPress={onBackToToday}
+                hitSlop={8}
+                accessibilityLabel="Back to today's quote"
+                style={({ hovered }: any) => [styles.heroTodayBtn, hovered && styles.heroTodayBtnHover]}
+              >
+                <Text style={styles.heroTodayText}>Today</Text>
+              </Pressable>
+            </Tooltip>
+          ) : (
+            <View style={styles.heroTodayPlaceholder}>
+              <Text style={styles.heroTodayPlaceholderText}>Today</Text>
+            </View>
+          )}
+          <Tooltip label="Previous">
+            <Pressable
+              onPress={onPrev}
+              hitSlop={8}
+              accessibilityLabel="Previous quote"
+              style={({ hovered }: any) => [styles.heroNavBtn, hovered && styles.heroNavBtnHover]}
+            >
+              <Text style={styles.heroNavIcon}>‹</Text>
+            </Pressable>
+          </Tooltip>
+          <Tooltip label="Next">
+            <Pressable
+              onPress={onNext}
+              hitSlop={8}
+              accessibilityLabel="Next quote"
+              style={({ hovered }: any) => [styles.heroNavBtn, hovered && styles.heroNavBtnHover]}
+            >
+              <Text style={styles.heroNavIcon}>›</Text>
+            </Pressable>
+          </Tooltip>
         </View>
       </View>
     </View>
@@ -249,33 +255,28 @@ function QuoteCard({
         pressed && styles.cardPressed,
       ]}
     >
-      <View style={[styles.cardAccent, { backgroundColor: meta.accent }]} />
-      <Text style={styles.cardText}>{quote.text}</Text>
-      <View style={styles.cardFooter}>
-        <View style={styles.cardMeta}>
-          <Text style={styles.cardAuthor} numberOfLines={1}>— {quote.author}</Text>
-          <Text style={[styles.cardCat, { color: meta.accent }]} numberOfLines={1}>
-            {meta.icon ? meta.icon + '  ' : ''}{meta.label}
-          </Text>
+      <View style={styles.cardTopRow}>
+        <View style={styles.cardTag}>
+          <View style={[styles.cardTagDot, { backgroundColor: meta.accent }]} />
+          <Text style={styles.cardTagText}>{meta.label}</Text>
         </View>
-        <View style={styles.cardActions}>
-          <Pressable
-            onPress={onCopy}
-            hitSlop={6}
-            style={({ hovered }: any) => [styles.iconBtn, hovered && styles.iconBtnHover]}
-          >
-            <Text style={styles.actionText}>{copied ? '✓' : '⧉'}</Text>
-          </Pressable>
+        <Tooltip label={favorite ? 'Remove from favorites' : 'Save to favorites'}>
           <Pressable
             onPress={onToggleFavorite}
             hitSlop={6}
-            style={({ hovered }: any) => [styles.iconBtn, hovered && styles.iconBtnHover]}
+            accessibilityLabel={favorite ? 'Remove from favorites' : 'Save to favorites'}
+            style={({ hovered }: any) => [styles.cardHeart, hovered && styles.cardHeartHover]}
           >
             <Text style={[styles.heart, favorite && styles.heartActive]}>
               {favorite ? '♥' : '♡'}
             </Text>
           </Pressable>
-        </View>
+        </Tooltip>
+      </View>
+      <Text style={styles.cardText}>{quote.text}</Text>
+      <View style={styles.cardFooter}>
+        <Text style={styles.cardAuthor} numberOfLines={1}>{quote.author}</Text>
+        {copied ? <Text style={styles.copiedFlag}>✓ Copied</Text> : null}
       </View>
     </Pressable>
   );
@@ -290,6 +291,7 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
   const toggleFavorite = useMotivation((s) => s.toggleFavorite);
 
   const [filter, setFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState('');
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [heroIndex, setHeroIndex] = useState<number>(() => todayIndex());
@@ -317,7 +319,8 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
   const backToToday = useCallback(() => setHeroIndex(todayIdx), [todayIdx]);
 
   // Web-only keyboard navigation: ← / → step through the hero. Skips while
-  // focus is in an editable field so it doesn't fight text input.
+  // focus is in an editable field so it doesn't fight text input (including
+  // the search box added in this redesign).
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const w: any = globalThis;
@@ -339,8 +342,14 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
     else if (filter === 'favorites') list = QUOTES.filter((q) => favSet.has(q.id));
     else list = QUOTES.filter((q) => q.category === filter);
 
+    const term = search.trim().toLowerCase();
+    if (term) {
+      list = list.filter(
+        (q) => q.text.toLowerCase().includes(term) || q.author.toLowerCase().includes(term),
+      );
+    }
+
     if (shuffleSeed > 0) {
-      // Seeded shuffle so order is stable until the user shuffles again.
       const arr = [...list];
       let seed = shuffleSeed;
       const rnd = () => {
@@ -354,7 +363,7 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
       return arr;
     }
     return list;
-  }, [filter, favSet, shuffleSeed]);
+  }, [filter, favSet, shuffleSeed, search]);
 
   const onCopy = useCallback((q: Quote) => {
     copyToClipboard(`“${q.text}” — ${q.author}`);
@@ -370,16 +379,9 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
     }
   }, []);
 
-  const counts = useMemo(() => {
-    const byCat: Record<string, number> = {};
-    for (const q of QUOTES) byCat[q.category] = (byCat[q.category] ?? 0) + 1;
-    return byCat;
-  }, []);
-
   const renderChip = (
     key: string,
     label: string,
-    count: number | null,
     accent: string | null,
     active: boolean,
     onPress: () => void,
@@ -396,11 +398,6 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
       <Text style={[styles.chipText, active && { color: colors.onAccent, fontWeight: '700' }]}>
         {label}
       </Text>
-      {count != null ? (
-        <Text style={[styles.chipCount, active && styles.chipCountActive]}>
-          {count}
-        </Text>
-      ) : null}
     </Pressable>
   );
 
@@ -408,6 +405,36 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
     filter === 'all' ? 'All quotes'
     : filter === 'favorites' ? 'Favorites'
     : categoryMeta(filter).label;
+
+  // Empty-state messaging differs by reason: search miss, favorites empty, or
+  // category empty (rare). Helps users understand why nothing is shown.
+  let emptyEl: React.ReactNode = null;
+  if (filtered.length === 0) {
+    if (search.trim()) {
+      emptyEl = (
+        <EmptyState
+          icon="🔍"
+          title="No matches"
+          subtitle={`Nothing matches “${search.trim()}” in ${sectionLabel.toLowerCase()}.`}
+        />
+      );
+    } else if (filter === 'favorites') {
+      emptyEl = (
+        <EmptyState
+          icon="💛"
+          title="No favorites yet"
+          subtitle="Tap the heart on any quote to save it here."
+        />
+      );
+    } else {
+      emptyEl = (
+        <EmptyState
+          icon="✨"
+          title="No quotes in this category yet"
+        />
+      );
+    }
+  }
 
   return (
     <View style={styles.screen}>
@@ -436,20 +463,28 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
           onToggleFavorite={() => toggleFavorite(featured.id)}
         />
 
-        <View style={styles.libHeader}>
-          <View style={styles.libTitleWrap}>
-            <Text style={styles.libTitle}>{sectionLabel}</Text>
-            <Text style={styles.libCount}>{filtered.length}</Text>
-          </View>
-          <Pressable
-            onPress={() => setShuffleSeed(shuffleSeed === 0 ? (Date.now() % 233280 || 1) : 0)}
-            hitSlop={6}
-            style={({ hovered }: any) => [styles.shuffleBtn, hovered && styles.shuffleBtnHover]}
-          >
-            <Text style={styles.shuffleText}>
-              {shuffleSeed > 0 ? '✓ Shuffled' : '🔀 Shuffle'}
-            </Text>
-          </Pressable>
+        <View style={styles.searchWrap}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search by text or author"
+            placeholderTextColor={colors.textFaint}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {search.length > 0 ? (
+            <Pressable
+              onPress={() => setSearch('')}
+              hitSlop={6}
+              accessibilityLabel="Clear search"
+              style={({ hovered }: any) => [styles.searchClear, hovered && styles.searchClearHover]}
+            >
+              <Text style={styles.searchClearText}>×</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <ScrollView
@@ -458,44 +493,53 @@ export function MotivationScreen({ onBack }: { onBack?: () => void }) {
           style={styles.filters}
           contentContainerStyle={styles.filtersInner}
         >
-          {renderChip('all', 'All', QUOTES.length, null, filter === 'all', () => setFilter('all'))}
+          {renderChip('all', 'All', null, filter === 'all', () => setFilter('all'))}
           {renderChip(
             'favorites',
-            '♥ Favorites',
-            favorites.length,
+            `♥ Favorites${favorites.length > 0 ? ` · ${favorites.length}` : ''}`,
             colors.danger,
             filter === 'favorites',
             () => setFilter('favorites'),
           )}
           {QUOTE_CATEGORIES.map((c) =>
-            renderChip(
-              c.key,
-              `${c.icon ? c.icon + ' ' : ''}${c.label}`,
-              counts[c.key] ?? 0,
-              c.accent,
-              filter === c.key,
-              () => setFilter(c.key),
-            ),
+            renderChip(c.key, c.label, c.accent, filter === c.key, () => setFilter(c.key)),
           )}
         </ScrollView>
 
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon="💛"
-            title="No favorites yet"
-            subtitle="Tap the heart on any quote to save it here."
-          />
+        <View style={styles.libHeader}>
+          <View style={styles.libTitleWrap}>
+            <Text style={styles.libTitle}>{sectionLabel}</Text>
+            <Text style={styles.libCount}>{filtered.length}</Text>
+          </View>
+          <Tooltip label={shuffleSeed > 0 ? 'Restore default order' : 'Shuffle quotes'}>
+            <Pressable
+              onPress={() => setShuffleSeed(shuffleSeed === 0 ? (Date.now() % 233280 || 1) : 0)}
+              hitSlop={6}
+              accessibilityLabel="Shuffle quotes"
+              style={({ hovered }: any) => [styles.shuffleBtn, hovered && styles.shuffleBtnHover]}
+            >
+              <Text style={styles.shuffleText}>
+                {shuffleSeed > 0 ? '✓ Shuffled' : '🔀 Shuffle'}
+              </Text>
+            </Pressable>
+          </Tooltip>
+        </View>
+
+        {emptyEl ? (
+          emptyEl
         ) : (
-          filtered.map((q) => (
-            <QuoteCard
-              key={q.id}
-              quote={q}
-              favorite={favSet.has(q.id)}
-              copied={copiedId === q.id}
-              onToggleFavorite={() => toggleFavorite(q.id)}
-              onCopy={() => onCopy(q)}
-            />
-          ))
+          <View style={styles.grid}>
+            {filtered.map((q) => (
+              <QuoteCard
+                key={q.id}
+                quote={q}
+                favorite={favSet.has(q.id)}
+                copied={copiedId === q.id}
+                onToggleFavorite={() => toggleFavorite(q.id)}
+                onCopy={() => onCopy(q)}
+              />
+            ))}
+          </View>
         )}
         <View style={{ height: spacing(6) }} />
       </ScrollView>
@@ -510,114 +554,145 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
 
   // ─── Hero ───
   hero: {
-    borderRadius: 20,
+    borderRadius: 24,
     paddingHorizontal: spacing(3),
-    paddingTop: spacing(2.5),
-    paddingBottom: spacing(2.25),
-    marginBottom: spacing(3),
+    paddingTop: spacing(2.25),
+    paddingBottom: spacing(2),
+    marginBottom: spacing(2.5),
     overflow: 'hidden',
     ...(Platform.select({
-      web: { boxShadow: '0 10px 30px rgba(42,36,26,0.45), 0 2px 6px rgba(0,0,0,0.18)' } as any,
-      default: shadow,
+      web: { boxShadow: '0 18px 38px rgba(30,27,75,0.45), 0 4px 12px rgba(0,0,0,0.18)' } as any,
+      default: { shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
     }) as any),
   },
-  heroGlyph: {
+  heroGlow: {
     position: 'absolute',
-    top: -34,
-    left: spacing(1.25),
-    fontSize: 200,
-    lineHeight: 200,
-    color: '#ffffff26',
-    fontFamily: serifFamily,
-    fontWeight: '400',
+    top: -80,
+    right: -80,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: '#ffffff14',
   },
   heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing(2.25),
-  },
-  heroKickerWrap: { flexDirection: 'row', alignItems: 'center' },
-  heroKickerDot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: HERO_INK,
-    marginRight: spacing(1),
-    opacity: 0.85,
-  },
-  heroKicker: { color: HERO_INK, fontSize: 11, fontWeight: '800', letterSpacing: 1.6, fontFamily },
-  heroTopRight: { flexDirection: 'row', alignItems: 'center' },
-  heroChip: {
-    paddingHorizontal: spacing(1.25),
-    paddingVertical: spacing(0.625),
-    borderRadius: radius.pill,
-    backgroundColor: '#ffffff3a',
-    marginLeft: spacing(0.75),
-    ...(Platform.select({ web: { transition: 'background-color 140ms ease' } as any }) as any),
-  },
-  heroChipHover: { backgroundColor: '#ffffff62' },
-  heroChipText: { color: HERO_INK, fontSize: 12, fontWeight: '700', fontFamily },
-
-  heroQuote: {
-    color: HERO_INK,
-    fontSize: 24,
-    lineHeight: 34,
-    fontWeight: '400',
-    fontFamily: serifFamily,
-    fontStyle: 'italic',
     marginBottom: spacing(2),
   },
-  heroAuthorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing(2.5) },
-  heroDash: { width: 26, height: 2, backgroundColor: HERO_INK, marginRight: spacing(1.25), opacity: 0.65 },
-  heroAuthor: { color: HERO_INK, fontSize: 15, fontWeight: '700', fontFamily, letterSpacing: 0.2 },
-  heroCat: { color: HERO_INK_DIM, fontSize: 12, fontWeight: '600', fontFamily, marginTop: 2 },
+  heroTagWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff1f',
+    paddingHorizontal: spacing(1),
+    paddingVertical: spacing(0.375),
+    borderRadius: radius.pill,
+  },
+  heroTagDot: { width: 6, height: 6, borderRadius: 3, marginRight: spacing(0.625) },
+  heroTag: { color: HERO_INK, fontSize: 11, fontWeight: '700', fontFamily, letterSpacing: 0.6 },
+  heroCount: {
+    color: HERO_INK_DIM,
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily,
+    letterSpacing: 0.4,
+  },
+
+  heroBody: { marginBottom: spacing(2.25) },
+  heroQuote: {
+    color: HERO_INK,
+    fontSize: 22,
+    lineHeight: 32,
+    fontWeight: '500',
+    fontFamily,
+    marginBottom: spacing(1.5),
+  },
+  heroAuthor: { color: HERO_INK_DIM, fontSize: 13, fontWeight: '600', fontFamily, letterSpacing: 0.3 },
 
   heroFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing(1),
   },
-  heroActions: { flexDirection: 'row', alignItems: 'center' },
+  heroActions: { flexDirection: 'row', alignItems: 'center', gap: spacing(0.5) },
   heroIconBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#ffffff35',
+    backgroundColor: '#ffffff1f',
     alignItems: 'center', justifyContent: 'center',
-    marginRight: spacing(0.75),
     ...(Platform.select({
       web: { transition: 'background-color 140ms ease, transform 140ms ease' } as any,
     }) as any),
   },
   heroIconBtnHover: {
-    backgroundColor: '#ffffff62',
+    backgroundColor: '#ffffff36',
     transform: [{ translateY: -1 }],
   },
   heroIcon: { color: HERO_INK, fontSize: 17, lineHeight: 20, fontWeight: '700' },
-  heroHeartActive: { color: '#c01933' },
 
-  heroNav: { flexDirection: 'row', alignItems: 'center' },
-  heroNavBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    alignItems: 'center', justifyContent: 'center',
+  heroNav: { flexDirection: 'row', alignItems: 'center', gap: spacing(0.5) },
+  heroTodayBtn: {
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(0.5),
+    borderRadius: radius.pill,
+    backgroundColor: '#ffffff26',
     ...(Platform.select({ web: { transition: 'background-color 140ms ease' } as any }) as any),
   },
-  heroNavBtnHover: { backgroundColor: '#ffffff3a' },
-  heroNavIcon: { color: HERO_INK, fontSize: 26, lineHeight: 28, fontWeight: '300' },
-  heroCount: {
-    color: HERO_INK,
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily,
-    marginHorizontal: spacing(0.5),
-    minWidth: 56,
-    textAlign: 'center',
-    letterSpacing: 0.4,
+  heroTodayBtnHover: { backgroundColor: '#ffffff42' },
+  heroTodayText: { color: HERO_INK, fontSize: 12, fontWeight: '700', fontFamily },
+  heroTodayPlaceholder: {
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(0.5),
+    opacity: 0,
   },
+  heroTodayPlaceholderText: { color: HERO_INK, fontSize: 12, fontWeight: '700', fontFamily },
+  heroNavBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#ffffff14',
+    ...(Platform.select({ web: { transition: 'background-color 140ms ease' } as any }) as any),
+  },
+  heroNavBtnHover: { backgroundColor: '#ffffff36' },
+  heroNavIcon: { color: HERO_INK, fontSize: 22, lineHeight: 24, fontWeight: '400' },
 
-  // ─── Library section ───
+  // ─── Search ───
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing(1.5),
+    height: 40,
+    marginBottom: spacing(1.5),
+    ...(Platform.select({ web: { transition: 'border-color 140ms ease' } as any }) as any),
+  },
+  searchIcon: { color: colors.textFaint, fontSize: 14, marginRight: spacing(1) },
+  searchInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+    fontFamily,
+    fontWeight: '500',
+    padding: 0,
+    ...(Platform.select({ web: { outlineWidth: 0, outlineStyle: 'none' } as any }) as any),
+  },
+  searchClear: {
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+  },
+  searchClearHover: { backgroundColor: colors.border },
+  searchClearText: { color: colors.textDim, fontSize: 16, lineHeight: 16, fontWeight: '700' },
+
+  // ─── Library header ───
   libHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing(1.25),
+    marginBottom: spacing(1.5),
     paddingHorizontal: spacing(0.25),
   },
   libTitleWrap: { flexDirection: 'row', alignItems: 'baseline' },
@@ -634,8 +709,8 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   shuffleText: { color: colors.textDim, fontSize: 12, fontWeight: '700', fontFamily },
 
   // ─── Filters ───
-  filters: { marginBottom: spacing(1.75), marginHorizontal: -spacing(3) },
-  filtersInner: { paddingHorizontal: spacing(3), paddingRight: spacing(2) },
+  filters: { marginBottom: spacing(1.5), marginHorizontal: -spacing(3) },
+  filtersInner: { paddingHorizontal: spacing(3), paddingRight: spacing(2), gap: spacing(0.875) },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -645,26 +720,29 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
     backgroundColor: colors.surface,
-    marginRight: spacing(0.875),
     ...(Platform.select({ web: { transition: 'background-color 140ms ease, border-color 140ms ease' } as any }) as any),
   },
   chipHover: { backgroundColor: colors.surfaceAlt },
   chipText: { color: colors.textDim, fontSize: 13, fontWeight: '600', fontFamily },
-  chipCount: { color: colors.textFaint, fontSize: 11, fontWeight: '700', fontFamily, marginLeft: spacing(0.625) },
-  chipCountActive: { color: colors.onAccent, opacity: 0.85 },
+
+  // ─── Responsive 2-col card grid ───
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing(1.5),
+  },
 
   // ─── Quote cards ───
   card: {
-    position: 'relative',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 320,
+    minWidth: 260,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: spacing(2),
-    paddingLeft: spacing(2.5),
-    paddingRight: spacing(2),
-    marginBottom: spacing(1.25),
-    overflow: 'hidden',
+    padding: spacing(2),
     ...(Platform.select({
       web: {
         transition: 'background-color 160ms ease, border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease',
@@ -673,24 +751,40 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   },
   cardHover: {
     backgroundColor: colors.surfaceAlt,
-    transform: [{ translateY: -1 }],
+    transform: [{ translateY: -2 }],
     ...(Platform.select({
-      web: { boxShadow: '0 4px 14px rgba(0,0,0,0.10)' } as any,
+      web: { boxShadow: '0 8px 20px rgba(0,0,0,0.16)' } as any,
     }) as any),
   },
   cardPressed: { opacity: 0.92 },
-  cardAccent: {
-    position: 'absolute',
-    left: 0, top: 0, bottom: 0,
-    width: 3,
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing(1.25),
   },
+  cardTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing(0.875),
+    paddingVertical: spacing(0.25),
+    borderRadius: radius.pill,
+  },
+  cardTagDot: { width: 6, height: 6, borderRadius: 3, marginRight: spacing(0.5) },
+  cardTagText: { color: colors.textDim, fontSize: 11, fontWeight: '700', fontFamily, letterSpacing: 0.3 },
+  cardHeart: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+    ...(Platform.select({ web: { transition: 'background-color 140ms ease' } as any }) as any),
+  },
+  cardHeartHover: { backgroundColor: colors.surfaceAlt },
   cardText: {
     color: colors.text,
-    fontSize: 16,
-    lineHeight: 25,
-    fontFamily: serifFamily,
-    fontStyle: 'italic',
-    fontWeight: '400',
+    fontSize: 15,
+    lineHeight: 23,
+    fontFamily,
+    fontWeight: '500',
     marginBottom: spacing(1.5),
   },
   cardFooter: {
@@ -698,18 +792,8 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  cardMeta: { flex: 1, marginRight: spacing(1) },
-  cardAuthor: { color: colors.text, fontSize: 13, fontWeight: '600', fontFamily },
-  cardCat: { fontSize: 11, fontWeight: '700', fontFamily, marginTop: 2, letterSpacing: 0.4 },
-  cardActions: { flexDirection: 'row', alignItems: 'center' },
-  iconBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center',
-    marginLeft: spacing(0.5),
-    ...(Platform.select({ web: { transition: 'background-color 140ms ease' } as any }) as any),
-  },
-  iconBtnHover: { backgroundColor: colors.border },
-  actionText: { color: colors.textDim, fontSize: 14, fontWeight: '700', fontFamily },
-  heart: { color: colors.textFaint, fontSize: 17, lineHeight: 19 },
+  cardAuthor: { color: colors.textDim, fontSize: 12, fontWeight: '600', fontFamily, flex: 1 },
+  copiedFlag: { color: colors.success, fontSize: 11, fontWeight: '700', fontFamily, marginLeft: spacing(1) },
+  heart: { color: colors.textFaint, fontSize: 18, lineHeight: 20 },
   heartActive: { color: colors.danger },
 });

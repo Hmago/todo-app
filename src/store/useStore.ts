@@ -175,13 +175,28 @@ export const useStore = create<State>()(
               completedTimes = { ...prev, [dateKey]: hhmm };
             }
 
+            // Record / clear the actual calendar day the user clicked complete
+            // (used by the calendar's "completed date" view).
+            const prevOn = t.completedOn ?? {};
+            let completedOn: Record<string, string> | undefined;
+            if (has) {
+              if (prevOn[dateKey] != null) {
+                const { [dateKey]: _drop, ...rest } = prevOn;
+                completedOn = Object.keys(rest).length ? rest : undefined;
+              } else {
+                completedOn = Object.keys(prevOn).length ? prevOn : undefined;
+              }
+            } else {
+              completedOn = { ...prevOn, [dateKey]: todayKey() };
+            }
+
             // Roll recurring reminders forward to the next occurrence on completion.
             let reminders = t.reminders;
             if (!has && t.recurrence !== 'none' && t.reminders?.length) {
               const next = nextOccurrence(t, dateKey);
               if (next) reminders = t.reminders.map((r) => rollReminderToDate(r, next));
             }
-            return { ...t, completedDates, skippedDates, completedTimes, reminders };
+            return { ...t, completedDates, skippedDates, completedTimes, completedOn, reminders };
           }),
           };
         }),
@@ -214,6 +229,14 @@ export const useStore = create<State>()(
                 completedTimes = Object.keys(rest).length ? rest : undefined;
               }
 
+              // Same for the completedOn map (actual completion calendar day).
+              const prevOn = t.completedOn ?? {};
+              let completedOn: Record<string, string> | undefined = t.completedOn;
+              if (!has && wasCompleted && prevOn[dateKey] != null) {
+                const { [dateKey]: _drop, ...rest } = prevOn;
+                completedOn = Object.keys(rest).length ? rest : undefined;
+              }
+
               // Roll recurring reminders forward to the next occurrence on skip —
               // same as completion, since the user is done with this occurrence.
               let reminders = t.reminders;
@@ -221,7 +244,7 @@ export const useStore = create<State>()(
                 const next = nextOccurrence(t, dateKey);
                 if (next) reminders = t.reminders.map((r) => rollReminderToDate(r, next));
               }
-              return { ...t, completedDates, skippedDates, completedTimes, reminders };
+              return { ...t, completedDates, skippedDates, completedTimes, completedOn, reminders };
             }),
           };
         }),
