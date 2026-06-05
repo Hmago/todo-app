@@ -1,5 +1,5 @@
 import { Task, StudySession, LearningGoal } from '../types';
-import { occursOn, isOccurrenceDone, expandRange } from './recurrence';
+import { occursOn, isOccurrenceDone, isOccurrenceSkipped, expandRange } from './recurrence';
 import { shiftDateKey, toKey, fromKey, todayKey } from './dates';
 import { startOfWeek, format, differenceInCalendarDays } from 'date-fns';
 
@@ -37,6 +37,9 @@ export function dailySeries(
     let completed = 0;
     for (const t of tasks) {
       if (occursOn(t, cur)) {
+        // Skipped occurrences are excused — they don't count toward scheduled
+        // or completed so the completion rate isn't penalized.
+        if (isOccurrenceSkipped(t, cur)) continue;
         scheduled++;
         if (isOccurrenceDone(t, cur)) completed++;
       }
@@ -216,6 +219,7 @@ export function tagBreakdown(
   for (const { task, dateKey } of occs) {
     const tags = task.tags ?? [];
     if (tags.length === 0) continue;
+    if (isOccurrenceSkipped(task, dateKey)) continue;
     const done = isOccurrenceDone(task, dateKey);
     for (const tag of tags) {
       let bucket = map.get(tag);

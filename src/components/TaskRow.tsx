@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, PanResponder, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated, PanResponder, Platform, Easing } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Task } from '../types';
 import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
@@ -7,6 +7,7 @@ import { pretty12h, prettyDate, prettyReminder } from '../lib/dates';
 import { recurrenceLabel } from '../lib/recurrence';
 import { estimateLabel, estimateLevelOf, EstimateLevel } from '../lib/estimate';
 import { useStore } from '../store/useStore';
+import { Tooltip } from './Tooltip';
 
 const SWIPE_THRESHOLD = 80;
 
@@ -21,26 +22,39 @@ export function TaskRow({
   task,
   dateKey,
   done,
+  skipped,
   showDate,
   onToggle,
+  onSkip,
   onPress,
   onDelete,
   onMoveUp,
   onMoveDown,
   isFirst,
   isLast,
+  animateOnMount,
 }: {
   task: Task;
   dateKey: string;
   done: boolean;
+  skipped?: boolean;
   showDate?: boolean;
   onToggle: () => void;
+  /** Toggle the "skipped" status for this occurrence. When provided, the row
+   * shows a small skip button next to the star and supports unskipping by
+   * tapping the checkbox while the task is skipped. */
+  onSkip?: () => void;
   onPress: () => void;
   onDelete?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   isFirst?: boolean;
   isLast?: boolean;
+  /** Play the completion / skip pop animation when the row first mounts. Used
+   * by parent lists that move tasks between active/completed/skipped sections
+   * on toggle — the active row unmounts, so the new section's row gets the
+   * animation flag instead. */
+  animateOnMount?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
   const colors = useTheme();
@@ -52,6 +66,75 @@ export function TaskRow({
   const estimateLevelValue = estimateLevelOf(task.estimateMinutes);
   const estimateColor = (lvl: EstimateLevel) =>
     lvl === 'low' ? colors.success : lvl === 'medium' ? colors.warning : colors.danger;
+
+  // Tapping the status circle reverts whatever state the row is currently in:
+  //  pending → complete (onToggle), completed → pending (onToggle),
+  //  skipped → pending (onSkip, when available).
+  const handleCheck = skipped && onSkip ? onSkip : onToggle;
+
+  // ---- Completion / skip animation ----
+  // checkScale: spring-pop on the checkbox itself.
+  // burstScale / burstOpacity: a soft ring that expands outward and fades.
+  const checkScale = useRef(new Animated.Value(1)).current;
+  const burstScale = useRef(new Animated.Value(0)).current;
+  const burstOpacity = useRef(new Animated.Value(0)).current;
+  const [burstColor, setBurstColor] = useState<string>(colors.primary);
+  const prevDoneRef = useRef(done);
+  const prevSkippedRef = useRef(!!skipped);
+
+  const playPop = (color: string) => {
+    setBurstColor(color);
+    checkScale.stopAnimation();
+    burstScale.stopAnimation();
+    burstOpacity.stopAnimation();
+    checkScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(checkScale, { toValue: 1.35, friction: 4, tension: 120, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.spring(checkScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: Platform.OS !== 'web' }),
+    ]).start();
+    // Start slightly larger than the check so the burst is visible from the
+    // first frame (rather than growing from a hidden dot behind the check).
+    burstScale.setValue(0.9);
+    burstOpacity.setValue(0.6);
+    Animated.parallel([
+      Animated.timing(burstScale, { toValue: 2.0, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(burstOpacity, { toValue: 0, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }),
+    ]).start();
+  };
+
+  // Mount-time animation: parent (TaskListView) sets this when a task just
+  // transitioned in this render cycle and was re-rendered into a different
+  // section (active → completed/skipped), so the active row unmounted and
+  // we wouldn't otherwise see a transition.
+  useEffect(() => {
+    if (animateOnMount) {
+      playPop(skipped ? colors.warning : colors.primary);
+    }
+    // Run only on first mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Transition-time animation: for screens that keep the row mounted across
+  // a status change (Calendar day view, Search results).
+  useEffect(() => {
+    const justCompleted = done && !prevDoneRef.current;
+    const justSkipped = !!skipped && !prevSkippedRef.current;
+    prevDoneRef.current = done;
+    prevSkippedRef.current = !!skipped;
+    if (justCompleted) playPop(colors.primary);
+    else if (justSkipped) playPop(colors.warning);
+    // colors is stable per theme; intentionally excluded from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, skipped]);
+
+  // Cancel any in-flight animations if the row unmounts.
+  useEffect(() => {
+    return () => {
+      checkScale.stopAnimation();
+      burstScale.stopAnimation();
+      burstOpacity.stopAnimation();
+    };
+  }, [checkScale, burstScale, burstOpacity]);
 
   const translateX = useRef(new Animated.Value(0)).current;
   const armed = useRef(false);
@@ -78,7 +161,7 @@ export function TaskRow({
         if (g.dx >= SWIPE_THRESHOLD) {
           notify(Haptics.NotificationFeedbackType.Success);
           Animated.timing(translateX, { toValue: 0, duration: 160, useNativeDriver: true }).start();
-          onToggle();
+          handleCheck();
         } else if (g.dx <= -SWIPE_THRESHOLD && onDelete) {
           notify(Haptics.NotificationFeedbackType.Warning);
           Animated.timing(translateX, { toValue: -500, duration: 160, useNativeDriver: true }).start(() => onDelete());
@@ -108,12 +191,15 @@ export function TaskRow({
   if (task.type === 'study') meta.push('Study');
 
   const showReorder = !!(onMoveUp || onMoveDown);
+  const isDone = done || !!skipped;
+  const showSkipBtn = !!onSkip && !done && !skipped;
+  const swipeLabel = isDone ? '↺  Undo' : '✓  Complete';
 
   return (
     <View style={styles.wrap}>
       <View style={styles.actionLayer} pointerEvents="none">
         <View style={[styles.action, styles.completeAction]}>
-          <Text style={styles.actionText}>{done ? '↺  Undo' : '✓  Complete'}</Text>
+          <Text style={styles.actionText}>{swipeLabel}</Text>
         </View>
         {onDelete ? (
           <View style={[styles.action, styles.deleteAction]}>
@@ -127,14 +213,62 @@ export function TaskRow({
       <Animated.View style={{ transform: [{ translateX }] }} {...pan.panHandlers}>
         <View style={styles.card}>
           <Pressable onPress={onPress} style={styles.row}>
-            <Pressable onPress={onToggle} hitSlop={10} style={styles.checkHit}>
-              <View style={[styles.check, done && styles.checkDone]}>
-                {done && <Text style={styles.checkMark}>✓</Text>}
-              </View>
-            </Pressable>
+            <Tooltip
+              label={
+                done
+                  ? 'Mark as not done'
+                  : skipped
+                  ? 'Mark as not skipped'
+                  : 'Mark complete'
+              }
+            >
+              <Pressable
+                onPress={handleCheck}
+                hitSlop={10}
+                style={styles.checkHit}
+                accessibilityLabel={
+                  done ? 'Mark task as not done' : skipped ? 'Mark task as not skipped' : 'Mark task complete'
+                }
+              >
+                <View style={styles.checkSlot}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.burst,
+                      {
+                        backgroundColor: burstColor,
+                        opacity: burstOpacity,
+                        transform: [{ scale: burstScale }],
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.check,
+                      done && styles.checkDone,
+                      skipped && styles.checkSkipped,
+                      { transform: [{ scale: checkScale }] },
+                    ]}
+                  >
+                    {done ? (
+                      <Text style={styles.checkMark}>✓</Text>
+                    ) : skipped ? (
+                      <Text style={styles.skipMark}>↷</Text>
+                    ) : null}
+                  </Animated.View>
+                </View>
+              </Pressable>
+            </Tooltip>
 
             <View style={styles.body}>
-              <Text style={[styles.title, done && styles.titleDone]} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.title,
+                  done && styles.titleDone,
+                  skipped && styles.titleSkipped,
+                ]}
+                numberOfLines={1}
+              >
                 {task.title}
               </Text>
               <View style={styles.metaRow}>
@@ -149,6 +283,11 @@ export function TaskRow({
                     {category ? '· ' : ''}
                     {meta.join(' · ')}
                   </Text>
+                ) : null}
+                {skipped ? (
+                  <View style={[styles.statusChip, { borderColor: colors.warning, backgroundColor: 'transparent' }]}>
+                    <Text style={[styles.statusChipText, { color: colors.warning }]}>Skipped</Text>
+                  </View>
                 ) : null}
                 {estimateLevelValue ? (
                   <View
@@ -189,18 +328,49 @@ export function TaskRow({
 
             {showReorder ? (
               <View style={styles.reorder}>
-                <Pressable onPress={onMoveUp} hitSlop={8} disabled={isFirst} style={styles.reorderBtn}>
-                  <Text style={[styles.reorderText, isFirst && styles.reorderDisabled]}>▲</Text>
-                </Pressable>
-                <Pressable onPress={onMoveDown} hitSlop={8} disabled={isLast} style={styles.reorderBtn}>
-                  <Text style={[styles.reorderText, isLast && styles.reorderDisabled]}>▼</Text>
-                </Pressable>
+                <Tooltip label="Move up" placement="bottom">
+                  <Pressable
+                    onPress={onMoveUp}
+                    hitSlop={8}
+                    disabled={isFirst}
+                    style={styles.reorderBtn}
+                    accessibilityLabel="Move task up"
+                  >
+                    <Text style={[styles.reorderText, isFirst && styles.reorderDisabled]}>▲</Text>
+                  </Pressable>
+                </Tooltip>
+                <Tooltip label="Move down" placement="bottom">
+                  <Pressable
+                    onPress={onMoveDown}
+                    hitSlop={8}
+                    disabled={isLast}
+                    style={styles.reorderBtn}
+                    accessibilityLabel="Move task down"
+                  >
+                    <Text style={[styles.reorderText, isLast && styles.reorderDisabled]}>▼</Text>
+                  </Pressable>
+                </Tooltip>
               </View>
             ) : null}
 
-            <Pressable onPress={() => toggleImportant(task.id)} hitSlop={10} style={styles.starHit}>
-              <Text style={[styles.star, task.important && styles.starOn]}>{task.important ? '★' : '☆'}</Text>
-            </Pressable>
+            {showSkipBtn ? (
+              <Tooltip label="Skip this occurrence">
+                <Pressable onPress={onSkip} hitSlop={8} style={styles.skipHit} accessibilityLabel="Skip task">
+                  <Text style={styles.skipBtn}>↷</Text>
+                </Pressable>
+              </Tooltip>
+            ) : null}
+
+            <Tooltip label={task.important ? 'Remove star' : 'Mark important'}>
+              <Pressable
+                onPress={() => toggleImportant(task.id)}
+                hitSlop={10}
+                style={styles.starHit}
+                accessibilityLabel={task.important ? 'Remove star from task' : 'Mark task as important'}
+              >
+                <Text style={[styles.star, task.important && styles.starOn]}>{task.important ? '★' : '☆'}</Text>
+              </Pressable>
+            </Tooltip>
           </Pressable>
 
           {subtasksExpanded && subtasks.length > 0 ? (
@@ -259,6 +429,18 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     paddingHorizontal: spacing(1.75),
   },
   checkHit: { marginRight: spacing(1.5) },
+  checkSlot: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  burst: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
   check: {
     width: 22,
     height: 22,
@@ -269,10 +451,13 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     justifyContent: 'center',
   },
   checkDone: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkSkipped: { backgroundColor: colors.warning, borderColor: colors.warning },
   checkMark: { color: colors.white, fontSize: 13, fontWeight: '900', lineHeight: 15 },
+  skipMark: { color: colors.white, fontSize: 14, fontWeight: '900', lineHeight: 16 },
   body: { flex: 1 },
   title: { color: colors.text, fontSize: 15, fontWeight: '500', fontFamily },
   titleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
+  titleSkipped: { textDecorationLine: 'line-through', color: colors.textDim, fontStyle: 'italic' },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 2 },
   meta: { color: colors.textDim, fontSize: 12, fontFamily },
   catWrap: { flexDirection: 'row', alignItems: 'center', marginRight: 4 },
@@ -280,6 +465,16 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   starHit: { paddingLeft: spacing(1) },
   star: { fontSize: 19, color: colors.textFaint },
   starOn: { color: colors.star },
+  skipHit: { paddingHorizontal: spacing(0.75) },
+  skipBtn: { fontSize: 18, color: colors.textFaint, fontWeight: '600' },
+  statusChip: {
+    paddingHorizontal: spacing(0.75),
+    paddingVertical: 1,
+    marginLeft: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  statusChipText: { fontSize: 11, fontWeight: '700', fontFamily, letterSpacing: 0.2 },
   reorder: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingLeft: spacing(0.5) },
   reorderBtn: { paddingHorizontal: spacing(0.75), paddingVertical: 1 },
   reorderText: { fontSize: 12, color: colors.textDim },

@@ -3,6 +3,7 @@ import { View, Text, TextInput, StyleSheet, Pressable, Platform, ScrollView } fr
 import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { Category } from '../types';
 import { parseQuickAdd, describeParse } from '../lib/quickAdd';
+import { Tooltip } from './Tooltip';
 
 export function AddTaskBar({
   accent,
@@ -57,14 +58,18 @@ export function AddTaskBar({
           blurOnSubmit={false}
         />
         {onExpand ? (
-          <Pressable onPress={onExpand} hitSlop={8} style={styles.expand}>
-            <Text style={[styles.expandText, { color: accent }]}>⋯</Text>
-          </Pressable>
+          <Tooltip label="Open full editor" placement="top">
+            <Pressable onPress={onExpand} hitSlop={8} style={styles.expand} accessibilityLabel="Open full task editor">
+              <Text style={[styles.expandText, { color: accent }]}>⋯</Text>
+            </Pressable>
+          </Tooltip>
         ) : null}
         {value.trim() ? (
-          <Pressable onPress={submit} hitSlop={8}>
-            <Text style={[styles.add, { color: accent }]}>Add</Text>
-          </Pressable>
+          <Tooltip label="Add task (Enter)" placement="top">
+            <Pressable onPress={submit} hitSlop={8} accessibilityLabel="Add task">
+              <Text style={[styles.add, { color: accent }]}>Add</Text>
+            </Pressable>
+          </Tooltip>
         ) : null}
       </View>
     </View>

@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-
 import { radius, spacing, fontFamily, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { todayKey } from '../lib/dates';
-import { occursOn, isOccurrenceDone } from '../lib/recurrence';
+import { occursOn, isOccurrenceDone, occurrenceStatus } from '../lib/recurrence';
+import { Tooltip } from './Tooltip';
 
 export type NavKey =
   | 'myday'
@@ -66,9 +67,11 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
   const [name, setName] = useState('');
   const [color, setColor] = useState(CATEGORY_COLORS[0]);
 
-  const myDayCount = tasks.filter((t) => occursOn(t, today) && !isOccurrenceDone(t, today)).length;
-  const importantCount = tasks.filter((t) => t.important && !isOccurrenceDone(t, t.date)).length;
-  const plannedCount = tasks.filter((t) => !isOccurrenceDone(t, t.date)).length;
+  // "Open" counts exclude both completed AND skipped occurrences. Use
+  // occurrenceStatus instead of !isOccurrenceDone (which is strict completed-only).
+  const myDayCount = tasks.filter((t) => occursOn(t, today) && occurrenceStatus(t, today) === 'pending').length;
+  const importantCount = tasks.filter((t) => t.important && occurrenceStatus(t, t.date) === 'pending').length;
+  const plannedCount = tasks.filter((t) => occurrenceStatus(t, t.date) === 'pending').length;
 
   const create = () => {
     const n = name.trim();
@@ -112,7 +115,7 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
         <View style={styles.divider} />
 
         {categories.map((c) => {
-          const count = tasks.filter((t) => t.categoryId === c.id && !isOccurrenceDone(t, t.date)).length;
+          const count = tasks.filter((t) => t.categoryId === c.id && occurrenceStatus(t, t.date) === 'pending').length;
           return (
             <NavItem
               key={c.id}
@@ -162,19 +165,25 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
       </ScrollView>
 
       <View style={styles.footer}>
-        <Pressable
-          onPress={() => setCreating((v) => !v)}
-          style={({ hovered }: any) => [styles.footerBtn, hovered && styles.itemHover]}
-        >
-          <Text style={styles.footerPlus}>＋</Text>
-          <Text style={styles.footerLabel}>New list</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => onSelect('settings')}
-          style={({ hovered }: any) => [styles.gear, hovered && styles.itemHover, active === 'settings' && styles.itemActive]}
-        >
-          <Text style={styles.gearIcon}>⚙️</Text>
-        </Pressable>
+        <Tooltip label="New list" placement="top">
+          <Pressable
+            onPress={() => setCreating((v) => !v)}
+            style={({ hovered }: any) => [styles.footerBtn, hovered && styles.itemHover]}
+            accessibilityLabel="Create a new list"
+          >
+            <Text style={styles.footerPlus}>＋</Text>
+            <Text style={styles.footerLabel}>New list</Text>
+          </Pressable>
+        </Tooltip>
+        <Tooltip label="Settings" placement="top">
+          <Pressable
+            onPress={() => onSelect('settings')}
+            style={({ hovered }: any) => [styles.gear, hovered && styles.itemHover, active === 'settings' && styles.itemActive]}
+            accessibilityLabel="Open settings"
+          >
+            <Text style={styles.gearIcon}>⚙️</Text>
+          </Pressable>
+        </Tooltip>
       </View>
     </View>
   );

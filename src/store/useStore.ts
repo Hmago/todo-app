@@ -26,6 +26,7 @@ interface State {
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleComplete: (id: string, dateKey: string) => void;
+  toggleSkip: (id: string, dateKey: string) => void;
   toggleImportant: (id: string) => void;
   toggleSubtask: (taskId: string, subtaskId: string) => void;
   moveTask: (id: string, dir: 'up' | 'down') => void;
@@ -120,7 +121,7 @@ export const useStore = create<State>()(
           return {
             tasks: [
               ...s.tasks,
-              { ...t, id: uid('t-'), createdAt: new Date().toISOString(), completedDates: [] },
+              { ...t, id: uid('t-'), createdAt: new Date().toISOString(), completedDates: [], skippedDates: [] },
             ],
           };
         }),
@@ -146,6 +147,13 @@ export const useStore = create<State>()(
             const completedDates = has
               ? t.completedDates.filter((d) => d !== dateKey)
               : [...t.completedDates, dateKey];
+
+            // Completed and skipped are mutually exclusive — clear any
+            // existing "skipped" record when marking complete.
+            const prevSkipped = t.skippedDates ?? [];
+            const skippedDates = !has && prevSkipped.includes(dateKey)
+              ? prevSkipped.filter((d) => d !== dateKey)
+              : prevSkipped;
 
             // Record / clear the wall-clock completion time used by the
             // time-of-day analytics histogram. The map is omitted entirely when
@@ -173,8 +181,48 @@ export const useStore = create<State>()(
               const next = nextOccurrence(t, dateKey);
               if (next) reminders = t.reminders.map((r) => rollReminderToDate(r, next));
             }
-            return { ...t, completedDates, completedTimes, reminders };
+            return { ...t, completedDates, skippedDates, completedTimes, reminders };
           }),
+          };
+        }),
+
+      toggleSkip: (id, dateKey) =>
+        set((s) => {
+          const cur = s.tasks.find((t) => t.id === id);
+          const willSkip = cur ? !(cur.skippedDates ?? []).includes(dateKey) : true;
+          recordHistory(willSkip ? 'Skipped task' : 'Unskipped task', s.tasks);
+          return {
+            tasks: s.tasks.map((t) => {
+              if (t.id !== id) return t;
+              const prevSkipped = t.skippedDates ?? [];
+              const has = prevSkipped.includes(dateKey);
+              const skippedDates = has
+                ? prevSkipped.filter((d) => d !== dateKey)
+                : [...prevSkipped, dateKey];
+
+              // Mutually exclusive with completed.
+              const wasCompleted = t.completedDates.includes(dateKey);
+              const completedDates = !has && wasCompleted
+                ? t.completedDates.filter((d) => d !== dateKey)
+                : t.completedDates;
+
+              // If we just cleared a completion, also drop its wall-clock time.
+              const prevTimes = t.completedTimes ?? {};
+              let completedTimes: Record<string, string> | undefined = t.completedTimes;
+              if (!has && wasCompleted && prevTimes[dateKey] != null) {
+                const { [dateKey]: _drop, ...rest } = prevTimes;
+                completedTimes = Object.keys(rest).length ? rest : undefined;
+              }
+
+              // Roll recurring reminders forward to the next occurrence on skip —
+              // same as completion, since the user is done with this occurrence.
+              let reminders = t.reminders;
+              if (!has && t.recurrence !== 'none' && t.reminders?.length) {
+                const next = nextOccurrence(t, dateKey);
+                if (next) reminders = t.reminders.map((r) => rollReminderToDate(r, next));
+              }
+              return { ...t, completedDates, skippedDates, completedTimes, reminders };
+            }),
           };
         }),
 

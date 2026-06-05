@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { spacing, fontFamily, listThemes, useTheme, useThemedStyles, Palette } from '../theme';
+import { Tooltip } from './Tooltip';
 
 export function ListHeader({
   themeKey,
@@ -26,9 +27,11 @@ export function ListHeader({
     <View style={styles.wrap}>
       <View style={styles.topRow}>
         {onBack ? (
-          <Pressable onPress={onBack} hitSlop={10} style={styles.back}>
-            <Text style={styles.backText}>‹</Text>
-          </Pressable>
+          <Tooltip label="Back" placement="bottom">
+            <Pressable onPress={onBack} hitSlop={10} style={styles.back} accessibilityLabel="Go back">
+              <Text style={styles.backText}>‹</Text>
+            </Pressable>
+          </Tooltip>
         ) : null}
         <View style={styles.titleRow}>
           {icon ? <Text style={[styles.icon, { color: theme.accent }]}>{icon}</Text> : null}

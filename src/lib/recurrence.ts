@@ -55,6 +55,21 @@ export function isOccurrenceDone(task: Task, dateKey: string): boolean {
   return task.completedDates.includes(dateKey);
 }
 
+export function isOccurrenceSkipped(task: Task, dateKey: string): boolean {
+  return !!task.skippedDates?.includes(dateKey);
+}
+
+export type OccurrenceStatus = 'pending' | 'completed' | 'skipped';
+
+/** Tri-state status for a task on a given date. Completed wins over skipped if
+ * both are somehow present (defensive — they're kept mutually exclusive by the
+ * store actions). */
+export function occurrenceStatus(task: Task, dateKey: string): OccurrenceStatus {
+  if (task.completedDates.includes(dateKey)) return 'completed';
+  if (task.skippedDates?.includes(dateKey)) return 'skipped';
+  return 'pending';
+}
+
 /** The first occurrence date key strictly after `afterKey`, or null if non-recurring. */
 export function nextOccurrence(task: Task, afterKey: string): string | null {
   if (task.recurrence === 'none') return null;

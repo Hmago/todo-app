@@ -6,7 +6,8 @@ import { ListHeader } from './ListHeader';
 import { AddTaskBar } from './AddTaskBar';
 import { TaskRow } from './TaskRow';
 import { EmptyState } from './ui';
-import { isOccurrenceDone } from '../lib/recurrence';
+import { Tooltip } from './Tooltip';
+import { occurrenceStatus } from '../lib/recurrence';
 import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 
@@ -55,24 +56,49 @@ export function TaskListView({
   const styles = useThemedStyles(makeStyles);
   const theme = listThemes[themeKey] ?? listThemes.tasks;
   const accent = accentOverride ?? theme.accent;
+  const colors = useTheme();
   const toggleComplete = useStore((s) => s.toggleComplete);
+  const toggleSkip = useStore((s) => s.toggleSkip);
   const deleteTask = useStore((s) => s.deleteTask);
   const categories = useStore((s) => s.categories);
   const openEdit = useUI((s) => s.openEdit);
   const [hideCompleted, setHideCompleted] = useState(false);
+  // Tracks the task occurrence whose status just flipped pending → done/skipped
+  // so the newly-mounted row in the completed/skipped section can play a pop.
+  const [animatingKey, setAnimatingKey] = useState<string | null>(null);
+  const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashCompletion = (key: string) => {
+    if (animTimer.current) clearTimeout(animTimer.current);
+    setAnimatingKey(key);
+    animTimer.current = setTimeout(() => {
+      setAnimatingKey((cur) => (cur === key ? null : cur));
+      animTimer.current = null;
+    }, 700);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (animTimer.current) clearTimeout(animTimer.current);
+    };
+  }, []);
 
   const reorderEnabled = !!onReorderMove;
   const dndEnabled = Platform.OS === 'web' && reorderEnabled;
 
-  const { active, completed } = useMemo(() => {
+  const { active, completed, skipped } = useMemo(() => {
     const a: ListItem[] = [];
     const c: ListItem[] = [];
+    const sk: ListItem[] = [];
     for (const it of items) {
-      if (isOccurrenceDone(it.task, it.dateKey)) c.push(it);
+      const st = occurrenceStatus(it.task, it.dateKey);
+      if (st === 'completed') c.push(it);
+      else if (st === 'skipped') sk.push(it);
       else a.push(it);
     }
-    return { active: a, completed: c };
+    return { active: a, completed: c, skipped: sk };
   }, [items]);
+  const doneCount = completed.length + skipped.length;
 
   // ---- Imperative drag state (refs, no React re-renders during drag) ----
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -177,7 +203,14 @@ export function TaskListView({
           dateKey={it.dateKey}
           done={false}
           showDate={it.showDate}
-          onToggle={() => toggleComplete(it.task.id, it.dateKey)}
+          onToggle={() => {
+            flashCompletion(it.task.id + it.dateKey);
+            toggleComplete(it.task.id, it.dateKey);
+          }}
+          onSkip={() => {
+            flashCompletion(it.task.id + it.dateKey);
+            toggleSkip(it.task.id, it.dateKey);
+          }}
           onPress={() => openEdit(it.task)}
           onDelete={() => deleteTask(it.task.id)}
           onMoveUp={reorderEnabled ? () => handleArrowMove(it.task.id, 'up') : undefined}
@@ -249,21 +282,24 @@ export function TaskListView({
         onBack={onBack}
       />
       <ScrollView style={styles.body} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {completed.length > 0 ? (
+        {doneCount > 0 ? (
           <View style={styles.toolbar}>
-            <Pressable
-              onPress={() => setHideCompleted((v) => !v)}
-              hitSlop={6}
-              style={[styles.toggleChip, { borderColor: accent }]}
-            >
-              <Text style={[styles.toggleChipText, { color: accent }]}>
-                {hideCompleted ? '👁  Show' : '🙈  Hide'} completed ({completed.length})
-              </Text>
-            </Pressable>
+            <Tooltip label={hideCompleted ? 'Show completed and skipped tasks' : 'Hide completed and skipped tasks'} placement="bottom">
+              <Pressable
+                onPress={() => setHideCompleted((v) => !v)}
+                hitSlop={6}
+                style={[styles.toggleChip, { borderColor: accent }]}
+                accessibilityLabel={hideCompleted ? 'Show done tasks' : 'Hide done tasks'}
+              >
+                <Text style={[styles.toggleChipText, { color: accent }]}>
+                  {hideCompleted ? '👁  Show' : '🙈  Hide'} done ({doneCount})
+                </Text>
+              </Pressable>
+            </Tooltip>
           </View>
         ) : null}
 
-        {active.length === 0 && (completed.length === 0 || hideCompleted) ? (
+        {active.length === 0 && (doneCount === 0 || hideCompleted) ? (
           <EmptyState icon={emptyIcon} title={emptyTitle} subtitle={emptySubtitle} />
         ) : (
           active.map((it, idx) => renderActiveRow(it, idx))
@@ -302,8 +338,31 @@ export function TaskListView({
                 task={it.task}
                 dateKey={it.dateKey}
                 done
+                animateOnMount={animatingKey === it.task.id + it.dateKey}
                 showDate={it.showDate}
                 onToggle={() => toggleComplete(it.task.id, it.dateKey)}
+                onSkip={() => toggleSkip(it.task.id, it.dateKey)}
+                onPress={() => openEdit(it.task)}
+                onDelete={() => deleteTask(it.task.id)}
+              />
+            ))}
+          </View>
+        )}
+
+        {!hideCompleted && skipped.length > 0 && (
+          <View style={{ marginTop: spacing(1) }}>
+            <Text style={[styles.doneTitle, { color: colors.warning }]}>Skipped {skipped.length}</Text>
+            {skipped.map((it) => (
+              <TaskRow
+                key={it.task.id + it.dateKey}
+                task={it.task}
+                dateKey={it.dateKey}
+                done={false}
+                skipped
+                animateOnMount={animatingKey === it.task.id + it.dateKey}
+                showDate={it.showDate}
+                onToggle={() => toggleComplete(it.task.id, it.dateKey)}
+                onSkip={() => toggleSkip(it.task.id, it.dateKey)}
                 onPress={() => openEdit(it.task)}
                 onDelete={() => deleteTask(it.task.id)}
               />

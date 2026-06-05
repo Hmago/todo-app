@@ -26,10 +26,13 @@ import { todayKey } from '../lib/dates';
 import { QUOTES, QUOTE_CATEGORIES, Quote, QuoteCategory } from '../data/quotes';
 import { useMotivation } from '../store/useMotivation';
 
-const HERO_GRADIENT = ['#8a6a16', '#caa036', '#f5c542'] as const;
-// Fixed dark ink that reads well on the golden hero in both light & dark mode.
-const HERO_INK = '#241f08';
-const HERO_INK_DIM = '#5a4f1c';
+// Muted warm-bronze gradient — keeps the literary character of a leather-bound
+// page without the eye-catching brightness of pure gold.
+const HERO_GRADIENT = ['#2a241a', '#3e3624', '#574934'] as const;
+// White ink reads cleanly on the darker hero. DIM is a warm off-white for
+// secondary text (category line, count, etc).
+const HERO_INK = '#f5efe2';
+const HERO_INK_DIM = '#c2b69a';
 
 // A serif gives the hero a more "literary" feel without pulling in a custom font.
 const serifFamily = Platform.select({
@@ -514,7 +517,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     marginBottom: spacing(3),
     overflow: 'hidden',
     ...(Platform.select({
-      web: { boxShadow: '0 10px 30px rgba(138,106,22,0.28), 0 2px 6px rgba(0,0,0,0.10)' } as any,
+      web: { boxShadow: '0 10px 30px rgba(42,36,26,0.45), 0 2px 6px rgba(0,0,0,0.18)' } as any,
       default: shadow,
     }) as any),
   },

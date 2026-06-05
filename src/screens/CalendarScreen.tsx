@@ -24,7 +24,7 @@ import {
   weekDays,
   startOfMonth,
 } from '../lib/dates';
-import { occursOn, isOccurrenceDone } from '../lib/recurrence';
+import { occursOn, isOccurrenceDone, isOccurrenceSkipped } from '../lib/recurrence';
 import {
   calendarSyncSupported,
   getCalendarPermission,
@@ -59,6 +59,7 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
   const addTask = useStore((s) => s.addTask);
   const updateTask = useStore((s) => s.updateTask);
   const toggleComplete = useStore((s) => s.toggleComplete);
+  const toggleSkip = useStore((s) => s.toggleSkip);
   const openEdit = useUI((s) => s.openEdit);
   const openNew = useUI((s) => s.openNew);
 
@@ -160,13 +161,15 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
   const summary = useMemo(() => {
     let total = 0;
     let done = 0;
+    let skipped = 0;
     let recurring = 0;
     for (const t of allOnDay) {
       total++;
       if (isOccurrenceDone(t, selected)) done++;
+      else if (isOccurrenceSkipped(t, selected)) skipped++;
       if (t.recurrence !== 'none' || t.recurrenceRule) recurring++;
     }
-    return { total, done, pending: total - done, recurring, once: total - recurring };
+    return { total, done, skipped, pending: total - done - skipped, recurring, once: total - recurring };
   }, [allOnDay, selected]);
 
   // ----- navigation -----
@@ -410,7 +413,9 @@ export function CalendarScreen({ onBack }: { onBack?: () => void }) {
                     task={t}
                     dateKey={selected}
                     done={isOccurrenceDone(t, selected)}
+                    skipped={isOccurrenceSkipped(t, selected)}
                     onToggle={() => toggleComplete(t.id, selected)}
+                    onSkip={() => toggleSkip(t.id, selected)}
                     onPress={() => openEdit(t)}
                   />
                 </View>

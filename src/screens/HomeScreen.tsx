@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-
 import { radius, spacing, fontFamily, shadow, listThemes, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { todayKey } from '../lib/dates';
-import { occursOn, isOccurrenceDone } from '../lib/recurrence';
+import { occursOn, occurrenceStatus } from '../lib/recurrence';
 
 export type Route =
   | 'tasks'
@@ -121,9 +121,10 @@ export function HomeScreen({
   const categories = useStore((s) => s.categories);
   const today = todayKey();
 
-  const myDayCount = tasks.filter((t) => occursOn(t, today) && !isOccurrenceDone(t, today)).length;
-  const importantCount = tasks.filter((t) => t.important && !isOccurrenceDone(t, t.date)).length;
-  const plannedCount = tasks.filter((t) => !isOccurrenceDone(t, t.date)).length;
+  // "Open" counts exclude both completed AND skipped occurrences.
+  const myDayCount = tasks.filter((t) => occursOn(t, today) && occurrenceStatus(t, today) === 'pending').length;
+  const importantCount = tasks.filter((t) => t.important && occurrenceStatus(t, t.date) === 'pending').length;
+  const plannedCount = tasks.filter((t) => occurrenceStatus(t, t.date) === 'pending').length;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -143,7 +144,7 @@ export function HomeScreen({
       <Text style={styles.sectionLabel}>My lists</Text>
       <View style={styles.group}>
         {categories.map((c) => {
-          const count = tasks.filter((t) => t.categoryId === c.id && !isOccurrenceDone(t, t.date)).length;
+          const count = tasks.filter((t) => t.categoryId === c.id && occurrenceStatus(t, t.date) === 'pending').length;
           return (
             <Row
               key={c.id}

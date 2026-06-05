@@ -42,7 +42,12 @@ function agendaBody(): string {
   const today = todayKey();
   const items = useStore
     .getState()
-    .tasks.filter((t) => occursOn(t, today) && !t.completedDates.includes(today));
+    .tasks.filter(
+      (t) =>
+        occursOn(t, today) &&
+        !t.completedDates.includes(today) &&
+        !(t.skippedDates ?? []).includes(today),
+    );
   if (items.length === 0) return 'No tasks scheduled today 🎉';
   const titles = items.slice(0, 3).map((t) => t.title).join(', ');
   return `${items.length} task${items.length === 1 ? '' : 's'} today${titles ? `: ${titles}` : ''}`;
@@ -86,6 +91,7 @@ export function useReminders(): RemindersApi {
       for (const reminder of task.reminders ?? []) {
         const occDate = reminder.slice(0, 10);
         if (task.completedDates.includes(occDate)) continue;
+        if ((task.skippedDates ?? []).includes(occDate)) continue;
         const ts = new Date(reminder).getTime();
         if (Number.isNaN(ts)) continue;
         entries.push({ key: `${task.id}@${reminder}`, task, reminder, ts });

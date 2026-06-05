@@ -7,7 +7,7 @@ import { useSavedFilters, SearchStatus } from '../store/useSavedFilters';
 import { TaskRow } from '../components/TaskRow';
 import { ListHeader } from '../components/ListHeader';
 import { Chip, EmptyState } from '../components/ui';
-import { isOccurrenceDone } from '../lib/recurrence';
+import { isOccurrenceDone, isOccurrenceSkipped } from '../lib/recurrence';
 import { todayKey } from '../lib/dates';
 import { Task, Category } from '../types';
 
@@ -34,7 +34,9 @@ function matchesPreset(t: Task, preset: Preset, today: string): boolean {
     case 'important':
       return !!t.important;
     case 'overdue':
-      return t.date < today && !isOccurrenceDone(t, t.date);
+      // Skipped tasks shouldn't appear as overdue — the user explicitly chose
+      // to skip that occurrence.
+      return t.date < today && !isOccurrenceDone(t, t.date) && !isOccurrenceSkipped(t, t.date);
     case 'recurring':
       return t.recurrence !== 'none' || !!t.recurrenceRule;
     case 'reminder':
@@ -52,6 +54,7 @@ export function SearchScreen({ onBack }: { onBack?: () => void }) {
   const tasks = useStore((s) => s.tasks);
   const categories = useStore((s) => s.categories);
   const toggleComplete = useStore((s) => s.toggleComplete);
+  const toggleSkip = useStore((s) => s.toggleSkip);
   const openEdit = useUI((s) => s.openEdit);
   const savedFilters = useSavedFilters((s) => s.filters);
   const addFilter = useSavedFilters((s) => s.addFilter);
@@ -207,8 +210,10 @@ export function SearchScreen({ onBack }: { onBack?: () => void }) {
               task={t}
               dateKey={t.date}
               done={isOccurrenceDone(t, t.date)}
+              skipped={isOccurrenceSkipped(t, t.date)}
               showDate
               onToggle={() => toggleComplete(t.id, t.date)}
+              onSkip={() => toggleSkip(t.id, t.date)}
               onPress={() => openEdit(t)}
             />
           ))
