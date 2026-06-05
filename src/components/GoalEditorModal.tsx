@@ -10,13 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { LearningGoal } from '../types';
+import { LearningGoal, Milestone } from '../types';
 import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
 import { AppModal } from './AppModal';
 import { todayKey } from '../lib/dates';
 import { nextSrDate } from '../lib/study';
 import { useStore } from '../store/useStore';
+import { uid } from '../lib/id';
 
 export function GoalEditorModal({
   visible,
@@ -40,6 +41,8 @@ export function GoalEditorModal({
   const [targetDate, setTargetDate] = useState('');
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [srEnabled, setSrEnabled] = useState(false);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [newMilestone, setNewMilestone] = useState('');
 
   useEffect(() => {
     if (!visible) return;
@@ -49,14 +52,28 @@ export function GoalEditorModal({
       setTargetDate(editing.targetDate ?? '');
       setCategoryId(editing.categoryId);
       setSrEnabled(!!editing.sr?.enabled);
+      setMilestones(editing.milestones ?? []);
     } else {
       setTitle('');
       setDescription('');
       setTargetDate('');
       setCategoryId(undefined);
       setSrEnabled(false);
+      setMilestones([]);
     }
+    setNewMilestone('');
   }, [visible, editing]);
+
+  const addSubGoal = () => {
+    const t = newMilestone.trim();
+    if (!t) return;
+    setMilestones((cur) => [...cur, { id: uid('m-'), title: t, done: false }]);
+    setNewMilestone('');
+  };
+  const toggleSubGoal = (id: string) =>
+    setMilestones((cur) => cur.map((m) => (m.id === id ? { ...m, done: !m.done } : m)));
+  const removeSubGoal = (id: string) =>
+    setMilestones((cur) => cur.filter((m) => m.id !== id));
 
   const save = () => {
     const t = title.trim();
@@ -66,6 +83,7 @@ export function GoalEditorModal({
       description: description.trim() || undefined,
       targetDate: targetDate.trim() || undefined,
       categoryId,
+      milestones,
     };
     if (editing) {
       updateGoal(editing.id, payload);
@@ -136,6 +154,37 @@ export function GoalEditorModal({
                   onPress={() => setCategoryId(categoryId === c.id ? undefined : c.id)}
                 />
               ))}
+            </View>
+
+            <Label>{`Sub-goals${milestones.length ? ` (${milestones.filter((m) => m.done).length}/${milestones.length})` : ''}`}</Label>
+            <Text style={styles.subHint}>
+              Break this goal into smaller checkable steps. You can tick them off as you progress.
+            </Text>
+            {milestones.map((m) => (
+              <Pressable key={m.id} style={styles.subRow} onPress={() => toggleSubGoal(m.id)}>
+                <View style={[styles.subCheck, m.done && styles.subCheckDone]}>
+                  {m.done && <Text style={styles.subCheckMark}>✓</Text>}
+                </View>
+                <Text style={[styles.subTitle, m.done && styles.subTitleDone]} numberOfLines={2}>
+                  {m.title}
+                </Text>
+                <Pressable onPress={() => removeSubGoal(m.id)} hitSlop={8}>
+                  <Text style={styles.subDelete}>✕</Text>
+                </Pressable>
+              </Pressable>
+            ))}
+            <View style={styles.subAddRow}>
+              <TextInput
+                value={newMilestone}
+                onChangeText={setNewMilestone}
+                placeholder="Add a sub-goal…"
+                placeholderTextColor={colors.textDim}
+                style={[styles.input, styles.subAddInput]}
+                onSubmitEditing={addSubGoal}
+                returnKeyType="done"
+                blurOnSubmit={false}
+              />
+              <Button title="Add" small onPress={addSubGoal} />
             </View>
 
             <View style={styles.srRow}>
@@ -216,6 +265,35 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   },
   srLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   srHint: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  subHint: { color: colors.textDim, fontSize: 12, marginTop: -spacing(0.25), marginBottom: spacing(0.75) },
+  subRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(1),
+    marginBottom: spacing(0.75),
+  },
+  subCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subCheckDone: { borderColor: colors.success, backgroundColor: colors.success },
+  subCheckMark: { color: colors.white, fontSize: 12, fontWeight: '800', lineHeight: 14 },
+  subTitle: { color: colors.text, fontSize: 14, fontWeight: '600', flex: 1 },
+  subTitleDone: { color: colors.textDim, textDecorationLine: 'line-through' },
+  subDelete: { color: colors.textFaint, fontSize: 14, fontWeight: '700', paddingHorizontal: spacing(0.5) },
+  subAddRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(1), marginBottom: spacing(1) },
+  subAddInput: { flex: 1, marginBottom: 0 },
   actions: { flexDirection: 'row', gap: spacing(1.5), marginTop: spacing(1) },
   deleteBtn: { alignItems: 'center', paddingVertical: spacing(1.5) },
   deleteText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
