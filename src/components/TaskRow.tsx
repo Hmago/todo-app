@@ -1,10 +1,11 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, PanResponder, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Task } from '../types';
 import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
-import { pretty12h, prettyDate, prettyReminder, prettyDuration } from '../lib/dates';
+import { pretty12h, prettyDate, prettyReminder } from '../lib/dates';
 import { recurrenceLabel } from '../lib/recurrence';
+import { estimateLabel, estimateLevelOf, EstimateLevel } from '../lib/estimate';
 import { useStore } from '../store/useStore';
 
 const SWIPE_THRESHOLD = 80;
@@ -42,8 +43,15 @@ export function TaskRow({
   isLast?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
+  const colors = useTheme();
   const category = useStore((s) => s.categories.find((c) => c.id === task.categoryId));
   const toggleImportant = useStore((s) => s.toggleImportant);
+  const toggleSubtask = useStore((s) => s.toggleSubtask);
+  const [subtasksExpanded, setSubtasksExpanded] = useState(false);
+
+  const estimateLevelValue = estimateLevelOf(task.estimateMinutes);
+  const estimateColor = (lvl: EstimateLevel) =>
+    lvl === 'low' ? colors.success : lvl === 'medium' ? colors.warning : colors.danger;
 
   const translateX = useRef(new Animated.Value(0)).current;
   const armed = useRef(false);
@@ -89,9 +97,8 @@ export function TaskRow({
   else if (task.time) meta.push(pretty12h(task.time));
   const recLabel = recurrenceLabel(task);
   if (recLabel) meta.push(recLabel);
-  if (task.estimateMinutes) meta.push(`⏱ ${prettyDuration(task.estimateMinutes)}`);
   const subtasks = task.subtasks ?? [];
-  if (subtasks.length > 0) meta.push(`☑ ${subtasks.filter((s) => s.done).length}/${subtasks.length}`);
+  const subtaskDone = subtasks.filter((s) => s.done).length;
   if (task.links && task.links.length > 0) meta.push(`🔗 ${task.links.length}`);
   if (task.tags && task.tags.length > 0) meta.push(task.tags.map((t) => `#${t}`).join(' '));
   const reminders = task.reminders ?? [];
@@ -118,48 +125,107 @@ export function TaskRow({
       </View>
 
       <Animated.View style={{ transform: [{ translateX }] }} {...pan.panHandlers}>
-        <Pressable onPress={onPress} style={styles.row}>
-          <Pressable onPress={onToggle} hitSlop={10} style={styles.checkHit}>
-            <View style={[styles.check, done && styles.checkDone]}>
-              {done && <Text style={styles.checkMark}>✓</Text>}
+        <View style={styles.card}>
+          <Pressable onPress={onPress} style={styles.row}>
+            <Pressable onPress={onToggle} hitSlop={10} style={styles.checkHit}>
+              <View style={[styles.check, done && styles.checkDone]}>
+                {done && <Text style={styles.checkMark}>✓</Text>}
+              </View>
+            </Pressable>
+
+            <View style={styles.body}>
+              <Text style={[styles.title, done && styles.titleDone]} numberOfLines={1}>
+                {task.title}
+              </Text>
+              <View style={styles.metaRow}>
+                {category ? (
+                  <View style={styles.catWrap}>
+                    <View style={[styles.catDot, { backgroundColor: category.color }]} />
+                    <Text style={styles.meta}>{category.name}</Text>
+                  </View>
+                ) : null}
+                {meta.length > 0 ? (
+                  <Text style={styles.meta}>
+                    {category ? '· ' : ''}
+                    {meta.join(' · ')}
+                  </Text>
+                ) : null}
+                {estimateLevelValue ? (
+                  <View
+                    style={[
+                      styles.estimateBadge,
+                      { borderColor: estimateColor(estimateLevelValue) },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.estimateDot,
+                        { backgroundColor: estimateColor(estimateLevelValue) },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.estimateText,
+                        { color: estimateColor(estimateLevelValue) },
+                      ]}
+                    >
+                      {estimateLabel(estimateLevelValue)}
+                    </Text>
+                  </View>
+                ) : null}
+                {subtasks.length > 0 ? (
+                  <Pressable
+                    onPress={() => setSubtasksExpanded((v) => !v)}
+                    hitSlop={6}
+                    style={styles.subChip}
+                  >
+                    <Text style={styles.subChipText}>
+                      ☑ {subtaskDone}/{subtasks.length} {subtasksExpanded ? '▴' : '▾'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
+
+            {showReorder ? (
+              <View style={styles.reorder}>
+                <Pressable onPress={onMoveUp} hitSlop={8} disabled={isFirst} style={styles.reorderBtn}>
+                  <Text style={[styles.reorderText, isFirst && styles.reorderDisabled]}>▲</Text>
+                </Pressable>
+                <Pressable onPress={onMoveDown} hitSlop={8} disabled={isLast} style={styles.reorderBtn}>
+                  <Text style={[styles.reorderText, isLast && styles.reorderDisabled]}>▼</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Pressable onPress={() => toggleImportant(task.id)} hitSlop={10} style={styles.starHit}>
+              <Text style={[styles.star, task.important && styles.starOn]}>{task.important ? '★' : '☆'}</Text>
+            </Pressable>
           </Pressable>
 
-          <View style={styles.body}>
-            <Text style={[styles.title, done && styles.titleDone]} numberOfLines={1}>
-              {task.title}
-            </Text>
-            <View style={styles.metaRow}>
-              {category ? (
-                <View style={styles.catWrap}>
-                  <View style={[styles.catDot, { backgroundColor: category.color }]} />
-                  <Text style={styles.meta}>{category.name}</Text>
-                </View>
-              ) : null}
-              {meta.length > 0 ? (
-                <Text style={styles.meta}>
-                  {category ? '· ' : ''}
-                  {meta.join(' · ')}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-
-          {showReorder ? (
-            <View style={styles.reorder}>
-              <Pressable onPress={onMoveUp} hitSlop={8} disabled={isFirst} style={styles.reorderBtn}>
-                <Text style={[styles.reorderText, isFirst && styles.reorderDisabled]}>▲</Text>
-              </Pressable>
-              <Pressable onPress={onMoveDown} hitSlop={8} disabled={isLast} style={styles.reorderBtn}>
-                <Text style={[styles.reorderText, isLast && styles.reorderDisabled]}>▼</Text>
-              </Pressable>
+          {subtasksExpanded && subtasks.length > 0 ? (
+            <View style={styles.subList}>
+              {subtasks.map((st) => (
+                <Pressable
+                  key={st.id}
+                  onPress={() => toggleSubtask(task.id, st.id)}
+                  hitSlop={4}
+                  style={styles.subItem}
+                >
+                  <View style={[styles.subCheck, st.done && styles.subCheckDone]}>
+                    {st.done ? <Text style={styles.subCheckMark}>✓</Text> : null}
+                  </View>
+                  <Text
+                    style={[styles.subItemText, st.done && styles.subItemTextDone]}
+                    numberOfLines={2}
+                  >
+                    {st.title}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
           ) : null}
-
-          <Pressable onPress={() => toggleImportant(task.id)} hitSlop={10} style={styles.starHit}>
-            <Text style={[styles.star, task.important && styles.starOn]}>{task.important ? '★' : '☆'}</Text>
-          </Pressable>
-        </Pressable>
+        </View>
       </Animated.View>
     </View>
   );
@@ -181,14 +247,16 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   completeAction: { backgroundColor: colors.primary, alignItems: 'flex-start' },
   deleteAction: { backgroundColor: colors.danger, alignItems: 'flex-end' },
   actionText: { color: colors.white, fontSize: 14, fontWeight: '800', fontFamily },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    ...shadow,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
     paddingVertical: spacing(1.5),
     paddingHorizontal: spacing(1.75),
-    ...shadow,
   },
   checkHit: { marginRight: spacing(1.5) },
   check: {
@@ -216,4 +284,52 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   reorderBtn: { paddingHorizontal: spacing(0.75), paddingVertical: 1 },
   reorderText: { fontSize: 12, color: colors.textDim },
   reorderDisabled: { color: colors.textFaint, opacity: 0.4 },
+  subChip: {
+    paddingHorizontal: spacing(0.75),
+    paddingVertical: 1,
+    marginLeft: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primaryDim,
+  },
+  subChipText: { color: colors.primary, fontSize: 11, fontWeight: '700', fontFamily },
+  estimateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing(0.75),
+    paddingVertical: 1,
+    marginLeft: 4,
+    backgroundColor: 'transparent',
+  },
+  estimateDot: { width: 6, height: 6, borderRadius: 3, marginRight: 4 },
+  estimateText: { fontSize: 11, fontWeight: '700', fontFamily },
+  subList: {
+    paddingLeft: spacing(5.5),
+    paddingRight: spacing(1.75),
+    paddingBottom: spacing(1.25),
+    paddingTop: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginTop: 2,
+  },
+  subItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing(0.5),
+  },
+  subCheck: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: colors.textFaint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing(1),
+  },
+  subCheckDone: { backgroundColor: colors.primary, borderColor: colors.primary },
+  subCheckMark: { color: colors.white, fontSize: 11, fontWeight: '900', lineHeight: 13 },
+  subItemText: { flex: 1, color: colors.text, fontSize: 13, fontFamily },
+  subItemTextDone: { textDecorationLine: 'line-through', color: colors.textFaint },
 });

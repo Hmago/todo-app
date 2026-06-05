@@ -28,10 +28,13 @@ import { TaskEditorModal } from './src/components/TaskEditorModal';
 import { Sidebar, NavKey } from './src/components/Sidebar';
 import ReminderBanner from './src/components/ReminderBanner';
 import { OnboardingOverlay } from './src/components/OnboardingOverlay';
+import { UndoToast } from './src/components/UndoToast';
 import { useReminders } from './src/lib/useReminders';
 import { initNotifications } from './src/lib/notifications';
 import { registerPWA } from './src/lib/pwa';
 import { useUI } from './src/store/useUI';
+import { useStore } from './src/store/useStore';
+import { useHistory } from './src/store/useHistory';
 
 type Tab = 'home' | 'myday' | 'important' | 'planned' | 'calendar';
 
@@ -64,6 +67,38 @@ function AppInner() {
   useEffect(() => {
     initNotifications();
     registerPWA();
+  }, []);
+
+  // Global Ctrl/Cmd+Z (undo) and Ctrl+Shift+Z / Ctrl+Y (redo). Skipped when
+  // focus is inside an editable element so the browser/text-input native undo
+  // continues to work for in-progress edits.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
+      const isUndo = key === 'z' && !e.shiftKey;
+      if (!isUndo && !isRedo) return;
+      e.preventDefault();
+      const cur = useStore.getState().tasks;
+      const entry = isRedo
+        ? useHistory.getState().popRedo(cur)
+        : useHistory.getState().popUndo(cur);
+      if (entry) useStore.setState({ tasks: entry.tasks });
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   const goTab = (t: Tab) => {
@@ -135,6 +170,7 @@ function AppInner() {
         </View>
         <TaskEditorModal visible={editorVisible} editing={editing} seed={seed} onClose={closeEditor} />
         <ReminderBanner {...reminders} />
+        <UndoToast />
         <OnboardingOverlay />
       </SafeAreaView>
     );
@@ -165,6 +201,7 @@ function AppInner() {
 
       <TaskEditorModal visible={editorVisible} editing={editing} seed={seed} onClose={closeEditor} />
       <ReminderBanner {...reminders} />
+      <UndoToast />
       <OnboardingOverlay />
     </SafeAreaView>
   );

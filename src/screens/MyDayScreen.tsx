@@ -18,6 +18,7 @@ export function MyDayScreen() {
   const tasks = useStore((s) => s.tasks);
   const addTask = useStore((s) => s.addTask);
   const categories = useStore((s) => s.categories);
+  const setTaskOrder = useStore((s) => s.setTaskOrder);
   const openNew = useUI((s) => s.openNew);
   const today = todayKey();
 
@@ -25,7 +26,12 @@ export function MyDayScreen() {
     () =>
       tasks
         .filter((t) => occursOn(t, today))
-        .sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99'))
+        .sort((a, b) => {
+          const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+          const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+          if (ao !== bo) return ao - bo;
+          return (a.time ?? '99:99').localeCompare(b.time ?? '99:99');
+        })
         .map((task) => ({ task, dateKey: today })),
     [tasks, today],
   );
@@ -45,6 +51,7 @@ export function MyDayScreen() {
         addTask(quickAddToTask(title, { date: today, type: 'task' }, categories))
       }
       onExpand={() => openNew({ date: today })}
+      onReorderMove={(ids) => setTaskOrder(ids)}
     />
   );
 }

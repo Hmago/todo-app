@@ -6,6 +6,7 @@ import { uid } from '../lib/id';
 import { toKey, addMonths, rollReminderToDate, todayKey } from '../lib/dates';
 import { nextOccurrence } from '../lib/recurrence';
 import { SR_INTERVALS, nextSrDate } from '../lib/study';
+import { recordHistory } from './useHistory';
 
 interface State {
   hydrated: boolean;
@@ -28,6 +29,7 @@ interface State {
   toggleImportant: (id: string) => void;
   toggleSubtask: (taskId: string, subtaskId: string) => void;
   moveTask: (id: string, dir: 'up' | 'down') => void;
+  setTaskOrder: (orderedIds: string[]) => void;
 
   // goal actions
   addGoal: (g: Omit<LearningGoal, 'id' | 'createdAt' | 'milestones'> & { milestones?: Milestone[] }) => void;
@@ -113,18 +115,32 @@ export const useStore = create<State>()(
         })),
 
       addTask: (t) =>
-        set((s) => ({
-          tasks: [
-            ...s.tasks,
-            { ...t, id: uid('t-'), createdAt: new Date().toISOString(), completedDates: [] },
-          ],
-        })),
+        set((s) => {
+          recordHistory('Added task', s.tasks);
+          return {
+            tasks: [
+              ...s.tasks,
+              { ...t, id: uid('t-'), createdAt: new Date().toISOString(), completedDates: [] },
+            ],
+          };
+        }),
       updateTask: (id, patch) =>
-        set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
-      deleteTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
+        set((s) => {
+          recordHistory('Updated task', s.tasks);
+          return { tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) };
+        }),
+      deleteTask: (id) =>
+        set((s) => {
+          recordHistory('Deleted task', s.tasks);
+          return { tasks: s.tasks.filter((t) => t.id !== id) };
+        }),
       toggleComplete: (id, dateKey) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) => {
+        set((s) => {
+          const cur = s.tasks.find((t) => t.id === id);
+          const willComplete = cur ? !cur.completedDates.includes(dateKey) : true;
+          recordHistory(willComplete ? 'Completed task' : 'Reopened task', s.tasks);
+          return {
+            tasks: s.tasks.map((t) => {
             if (t.id !== id) return t;
             const has = t.completedDates.includes(dateKey);
             const completedDates = has
@@ -159,16 +175,24 @@ export const useStore = create<State>()(
             }
             return { ...t, completedDates, completedTimes, reminders };
           }),
-        })),
+          };
+        }),
 
       toggleImportant: (id) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) => (t.id === id ? { ...t, important: !t.important } : t)),
-        })),
+        set((s) => {
+          const cur = s.tasks.find((t) => t.id === id);
+          const willStar = cur ? !cur.important : true;
+          recordHistory(willStar ? 'Marked important' : 'Unmarked important', s.tasks);
+          return {
+            tasks: s.tasks.map((t) => (t.id === id ? { ...t, important: !t.important } : t)),
+          };
+        }),
 
       toggleSubtask: (taskId, subtaskId) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
+        set((s) => {
+          recordHistory('Toggled subtask', s.tasks);
+          return {
+            tasks: s.tasks.map((t) =>
             t.id === taskId
               ? {
                   ...t,
@@ -178,7 +202,8 @@ export const useStore = create<State>()(
                 }
               : t,
           ),
-        })),
+          };
+        }),
 
       moveTask: (id, dir) =>
         set((s) => {
@@ -189,11 +214,50 @@ export const useStore = create<State>()(
           const idx = ordered.findIndex((t) => t.id === id);
           const j = dir === 'up' ? idx - 1 : idx + 1;
           if (idx < 0 || j < 0 || j >= ordered.length) return { tasks: s.tasks };
+          recordHistory('Reordered tasks', s.tasks);
           const ids = ordered.map((t) => t.id);
           [ids[idx], ids[j]] = [ids[j], ids[idx]];
           const orderMap: Record<string, number> = {};
           ids.forEach((tid, i) => (orderMap[tid] = i));
           return { tasks: s.tasks.map((t) => ({ ...t, order: orderMap[t.id] })) };
+        }),
+
+      setTaskOrder: (orderedIds) =>
+        set((s) => {
+          if (!orderedIds.length) return { tasks: s.tasks };
+          // Smart merge: keep non-listed tasks in their current global slots and
+          // only re-arrange the listed ids among the slots they currently occupy.
+          // This way reordering inside a filtered view (Category, My Day, etc.)
+          // never collides with the global order of other tasks.
+          const orderVal = (t: Task) => t.order ?? Number.MAX_SAFE_INTEGER;
+          const global = [...s.tasks].sort(
+            (a, b) => orderVal(a) - orderVal(b) || b.createdAt.localeCompare(a.createdAt),
+          );
+          const idSet = new Set(orderedIds);
+          const slots: number[] = [];
+          global.forEach((t, i) => {
+            if (idSet.has(t.id)) slots.push(i);
+          });
+          const byId = new Map(global.map((t) => [t.id, t] as const));
+          const newGlobal = [...global];
+          orderedIds.forEach((id, k) => {
+            const slot = slots[k];
+            const task = byId.get(id);
+            if (slot != null && task) newGlobal[slot] = task;
+          });
+          const orderMap: Record<string, number> = {};
+          newGlobal.forEach((t, i) => (orderMap[t.id] = i));
+          // Skip recording when nothing actually changes (e.g., drop in place).
+          const changed = s.tasks.some(
+            (t) => orderMap[t.id] != null && t.order !== orderMap[t.id],
+          );
+          if (!changed) return { tasks: s.tasks };
+          recordHistory('Reordered tasks', s.tasks);
+          return {
+            tasks: s.tasks.map((t) =>
+              orderMap[t.id] != null ? { ...t, order: orderMap[t.id] } : t,
+            ),
+          };
         }),
 
       addGoal: (g) =>

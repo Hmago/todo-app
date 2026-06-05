@@ -21,7 +21,7 @@ export function AllTasksScreen({ onBack }: { onBack?: () => void }) {
   const tasks = useStore((s) => s.tasks);
   const addTask = useStore((s) => s.addTask);
   const categories = useStore((s) => s.categories);
-  const moveTask = useStore((s) => s.moveTask);
+  const setTaskOrder = useStore((s) => s.setTaskOrder);
   const openNew = useUI((s) => s.openNew);
   const today = todayKey();
 
@@ -53,7 +53,7 @@ export function AllTasksScreen({ onBack }: { onBack?: () => void }) {
       }
       onExpand={() => openNew({ date: today })}
       onBack={onBack}
-      onReorder={(id, dir) => moveTask(id, dir)}
+      onReorderMove={(ids) => setTaskOrder(ids)}
     />
   );
 }
@@ -63,6 +63,7 @@ export function CategoryScreen({ categoryId, onBack }: { categoryId: string; onB
   const category = useStore((s) => s.categories.find((c) => c.id === categoryId));
   const categories = useStore((s) => s.categories);
   const addTask = useStore((s) => s.addTask);
+  const setTaskOrder = useStore((s) => s.setTaskOrder);
   const openNew = useUI((s) => s.openNew);
   const today = todayKey();
 
@@ -70,7 +71,12 @@ export function CategoryScreen({ categoryId, onBack }: { categoryId: string; onB
     () =>
       tasks
         .filter((t) => t.categoryId === categoryId)
-        .sort((a, b) => a.date.localeCompare(b.date))
+        .sort((a, b) => {
+          const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+          const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+          if (ao !== bo) return ao - bo;
+          return a.date.localeCompare(b.date);
+        })
         .map((task) => ({ task, dateKey: task.date, showDate: true })),
     [tasks, categoryId],
   );
@@ -95,6 +101,7 @@ export function CategoryScreen({ categoryId, onBack }: { categoryId: string; onB
       }
       onExpand={() => openNew({ date: today, categoryId })}
       onBack={onBack}
+      onReorderMove={(ids) => setTaskOrder(ids)}
     />
   );
 }

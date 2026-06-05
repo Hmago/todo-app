@@ -9,6 +9,7 @@ export function ImportantScreen() {
   const tasks = useStore((s) => s.tasks);
   const addTask = useStore((s) => s.addTask);
   const categories = useStore((s) => s.categories);
+  const setTaskOrder = useStore((s) => s.setTaskOrder);
   const openNew = useUI((s) => s.openNew);
   const today = todayKey();
 
@@ -16,7 +17,12 @@ export function ImportantScreen() {
     () =>
       tasks
         .filter((t) => t.important)
-        .sort((a, b) => a.date.localeCompare(b.date))
+        .sort((a, b) => {
+          const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+          const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+          if (ao !== bo) return ao - bo;
+          return a.date.localeCompare(b.date);
+        })
         .map((task) => ({ task, dateKey: task.date, showDate: true })),
     [tasks],
   );
@@ -35,6 +41,7 @@ export function ImportantScreen() {
         addTask(quickAddToTask(title, { date: today, type: 'task', important: true }, categories))
       }
       onExpand={() => openNew({ date: today, important: true })}
+      onReorderMove={(ids) => setTaskOrder(ids)}
     />
   );
 }

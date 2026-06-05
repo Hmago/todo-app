@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Switch,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -21,6 +20,12 @@ import { addDays } from 'date-fns';
 import { uid } from '../lib/id';
 import { useStore } from '../store/useStore';
 import { requestPermission, getPermission } from '../lib/notifications';
+import {
+  ESTIMATE_LEVELS,
+  ESTIMATE_MINUTES,
+  estimateLabel,
+  estimateLevelOf,
+} from '../lib/estimate';
 
 export interface DraftSeed {
   date?: string;
@@ -36,14 +41,6 @@ const RECURRENCES: { v: RecurrenceFreq; label: string }[] = [
   { v: 'daily', label: 'Daily' },
   { v: 'weekly', label: 'Weekly' },
   { v: 'monthly', label: 'Monthly' },
-];
-const QUICK_TIMES = ['08:00', '10:00', '12:00', '15:00', '18:30', '21:00'];
-const ESTIMATES: { label: string; mins: number }[] = [
-  { label: '15m', mins: 15 },
-  { label: '30m', mins: 30 },
-  { label: '1h', mins: 60 },
-  { label: '2h', mins: 120 },
-  { label: '4h', mins: 240 },
 ];
 type RecurKind = RecurrenceRule['kind'];
 
@@ -69,7 +66,6 @@ export function TaskEditorModal({
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(todayKey());
-  const [time, setTime] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
   const [recurrence, setRecurrence] = useState<RecurrenceFreq>('none');
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
@@ -77,11 +73,10 @@ export function TaskEditorModal({
   const [goalId, setGoalId] = useState<string | undefined>(undefined);
   const [important, setImportant] = useState(false);
   const [reminders, setReminders] = useState<string[]>([]);
-  const [customReminder, setCustomReminder] = useState('');
+  const [customReminderDate, setCustomReminderDate] = useState('');
+  const [customReminderTime, setCustomReminderTime] = useState('');
   const [recRule, setRecRule] = useState<RecurrenceRule | undefined>(undefined);
   const [everyN, setEveryN] = useState('2');
-  const [startDate, setStartDate] = useState('');
-  const [allDay, setAllDay] = useState(false);
   const [estimateMinutes, setEstimateMinutes] = useState<number | undefined>(undefined);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -97,7 +92,6 @@ export function TaskEditorModal({
       setTitle(editing.title);
       setNotes(editing.notes ?? '');
       setDate(editing.date);
-      setTime(editing.time ?? '');
       setPriority(editing.priority);
       setRecurrence(editing.recurrence);
       setCategoryId(editing.categoryId);
@@ -105,11 +99,10 @@ export function TaskEditorModal({
       setGoalId(editing.goalId);
       setImportant(!!editing.important);
       setReminders(editing.reminders ?? []);
-      setCustomReminder('');
+      setCustomReminderDate(editing.date);
+      setCustomReminderTime('09:00');
       setRecRule(editing.recurrenceRule);
       if (editing.recurrenceRule?.kind === 'everyNDays') setEveryN(String(editing.recurrenceRule.n));
-      setStartDate(editing.startDate ?? '');
-      setAllDay(!!editing.allDay);
       setEstimateMinutes(editing.estimateMinutes);
       setTags(editing.tags ?? []);
       setTagInput('');
@@ -122,7 +115,6 @@ export function TaskEditorModal({
       setTitle('');
       setNotes('');
       setDate(seed?.date ?? todayKey());
-      setTime('');
       setPriority('medium');
       setRecurrence('none');
       setCategoryId(seed?.categoryId);
@@ -130,11 +122,10 @@ export function TaskEditorModal({
       setGoalId(seed?.goalId);
       setImportant(!!seed?.important);
       setReminders([]);
-      setCustomReminder('');
+      setCustomReminderDate(seed?.date ?? todayKey());
+      setCustomReminderTime('09:00');
       setRecRule(undefined);
       setEveryN('2');
-      setStartDate('');
-      setAllDay(false);
       setEstimateMinutes(undefined);
       setTags([]);
       setTagInput('');
@@ -155,7 +146,7 @@ export function TaskEditorModal({
   };
 
   const addReminderFromOffset = (minutesBefore: number) => {
-    const base = new Date(`${date}T${time || '09:00'}`);
+    const base = new Date(`${date}T09:00`);
     if (Number.isNaN(base.getTime())) return;
     addReminder(toLocalIso(new Date(base.getTime() - minutesBefore * 60000)));
   };
@@ -164,11 +155,12 @@ export function TaskEditorModal({
     setReminders((prev) => prev.filter((r) => r !== iso));
 
   const addCustomReminder = () => {
-    const v = customReminder.trim();
-    if (!v) return;
-    if (Number.isNaN(new Date(v).getTime())) return;
-    addReminder(v);
-    setCustomReminder('');
+    const d = customReminderDate.trim();
+    const t = customReminderTime.trim();
+    if (!d || !t) return;
+    const iso = `${d}T${t}`;
+    if (Number.isNaN(new Date(iso).getTime())) return;
+    addReminder(iso);
   };
 
   const pickSimpleRecurrence = (v: RecurrenceFreq) => {
@@ -237,9 +229,9 @@ export function TaskEditorModal({
       categoryId,
       tags: tags.length ? tags : undefined,
       date,
-      startDate: startDate.trim() || undefined,
-      allDay: allDay || undefined,
-      time: allDay ? undefined : time.trim() || undefined,
+      startDate: undefined,
+      allDay: undefined,
+      time: undefined,
       estimateMinutes,
       priority,
       recurrence: rule ? 'none' : recurrence,
@@ -359,44 +351,6 @@ export function TaskEditorModal({
               <Chip label="+1 week" onPress={() => shiftDate(7)} />
             </View>
 
-            <Label>Start date</Label>
-            <DateTimeField
-              mode="date"
-              value={startDate}
-              onChange={setStartDate}
-              placeholder="yyyy-mm-dd (optional)"
-              style={styles.input}
-            />
-            <View style={styles.rowWrap}>
-              <Chip label="Today" onPress={() => setStartDate(todayKey())} />
-              <Chip label="Clear" onPress={() => setStartDate('')} />
-            </View>
-            <View style={styles.rowWrap}>
-              <Chip label="Today" onPress={() => setStartDate(todayKey())} />
-              <Chip label="Clear" onPress={() => setStartDate('')} />
-            </View>
-
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>All-day</Text>
-              <Switch
-                value={allDay}
-                onValueChange={setAllDay}
-                trackColor={{ true: colors.primary, false: colors.border }}
-              />
-            </View>
-
-            {!allDay ? (
-              <>
-                <Label>Time</Label>
-                <DateTimeField mode="time" value={time} onChange={setTime} style={styles.input} />
-                <View style={styles.rowWrap}>
-                  {QUICK_TIMES.map((q) => (
-                    <Chip key={q} label={q} active={time === q} onPress={() => setTime(time === q ? '' : q)} />
-                  ))}
-                </View>
-              </>
-            ) : null}
-
             <Label>Remind me</Label>
             {reminders.length > 0 ? (
               <View style={styles.rowWrap}>
@@ -409,7 +363,7 @@ export function TaskEditorModal({
               </View>
             ) : null}
             <View style={styles.rowWrap}>
-              <Chip label="At time" onPress={() => addReminder(`${date}T${time || '09:00'}`)} />
+              <Chip label="9 AM" onPress={() => addReminder(`${date}T09:00`)} />
               <Chip label="30 min before" onPress={() => addReminderFromOffset(30)} />
               <Chip label="1 hour before" onPress={() => addReminderFromOffset(60)} />
               <Chip label="1 day before" onPress={() => addReminderFromOffset(24 * 60)} />
@@ -419,14 +373,22 @@ export function TaskEditorModal({
               ) : null}
             </View>
             <View style={styles.customRow}>
-              <TextInput
-                value={customReminder}
-                onChangeText={setCustomReminder}
-                placeholder="yyyy-mm-ddThh:mm (custom)"
-                placeholderTextColor={colors.textDim}
-                style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                autoCapitalize="none"
-              />
+              <View style={styles.customReminderField}>
+                <DateTimeField
+                  mode="date"
+                  value={customReminderDate}
+                  onChange={setCustomReminderDate}
+                  style={[styles.input, { marginBottom: 0 }]}
+                />
+              </View>
+              <View style={styles.customReminderField}>
+                <DateTimeField
+                  mode="time"
+                  value={customReminderTime}
+                  onChange={setCustomReminderTime}
+                  style={[styles.input, { marginBottom: 0 }]}
+                />
+              </View>
               <Button title="Add" small onPress={addCustomReminder} />
             </View>
 
@@ -509,14 +471,19 @@ export function TaskEditorModal({
 
             <Label>Estimate</Label>
             <View style={styles.rowWrap}>
-              {ESTIMATES.map((e) => (
-                <Chip
-                  key={e.mins}
-                  label={e.label}
-                  active={estimateMinutes === e.mins}
-                  onPress={() => setEstimateMinutes(estimateMinutes === e.mins ? undefined : e.mins)}
-                />
-              ))}
+              {ESTIMATE_LEVELS.map((lvl) => {
+                const active = estimateLevelOf(estimateMinutes) === lvl;
+                return (
+                  <Chip
+                    key={lvl}
+                    label={estimateLabel(lvl)}
+                    active={active}
+                    onPress={() =>
+                      setEstimateMinutes(active ? undefined : ESTIMATE_MINUTES[lvl])
+                    }
+                  />
+                );
+              })}
               {estimateMinutes ? (
                 <Chip label="Clear" color={colors.danger} onPress={() => setEstimateMinutes(undefined)} />
               ) : null}
@@ -658,15 +625,8 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   reminderPillText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   reminderPillX: { color: colors.primary, fontSize: 12, opacity: 0.8 },
   customRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(1), marginBottom: spacing(1) },
+  customReminderField: { flex: 1 },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing(1) },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing(0.5),
-    marginBottom: spacing(1),
-  },
-  switchLabel: { color: colors.text, fontSize: 15, fontWeight: '600' },
   subRow: {
     flexDirection: 'row',
     alignItems: 'center',
