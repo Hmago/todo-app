@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { radius, spacing, fontFamily, listThemes, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { Card, ProgressBar, SectionTitle, Button } from '../components/ui';
@@ -7,6 +7,7 @@ import { ListHeader } from '../components/ListHeader';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { HourlyHistogram } from '../components/HourlyHistogram';
 import { GoalProgressList } from '../components/GoalProgressList';
+import { DateTimeField } from '../components/DateTimeField';
 import { todayKey, toKey, fromKey, prettyDate, prettyDuration } from '../lib/dates';
 import { addDays, format, startOfMonth, startOfYear, isValid, parseISO } from 'date-fns';
 import { occursOn, isOccurrenceDone, expandRange } from '../lib/recurrence';
@@ -280,25 +281,26 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
         </View>
         {range === 'custom' ? (
           <View style={styles.customRow}>
-            <TextInput
-              value={customFrom}
-              onChangeText={setCustomFrom}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textFaint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={styles.customInput}
-            />
+            <View style={styles.customInputWrap}>
+              <DateTimeField
+                mode="date"
+                value={customFrom}
+                onChange={setCustomFrom}
+                placeholder="YYYY-MM-DD"
+                style={styles.customInput}
+              />
+            </View>
             <Text style={styles.customSep}>→</Text>
-            <TextInput
-              value={customTo}
-              onChangeText={setCustomTo}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textFaint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={styles.customInput}
-            />
+            <View style={styles.customInputWrap}>
+              <DateTimeField
+                mode="date"
+                value={customTo}
+                onChange={setCustomTo}
+                placeholder="YYYY-MM-DD"
+                min={customFrom || undefined}
+                style={styles.customInput}
+              />
+            </View>
           </View>
         ) : null}
         {range === 'custom' && !customValid ? (
@@ -631,8 +633,10 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     gap: spacing(1),
     marginBottom: spacing(1),
   },
+  customInputWrap: { flex: 1 },
   customInput: {
     flex: 1,
+    marginBottom: 0,
     paddingVertical: spacing(0.75),
     paddingHorizontal: spacing(1.25),
     borderRadius: radius.md,

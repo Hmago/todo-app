@@ -14,7 +14,8 @@ import { LearningGoal, Milestone } from '../types';
 import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
 import { AppModal } from './AppModal';
-import { todayKey } from '../lib/dates';
+import { DateTimeField } from './DateTimeField';
+import { todayKey, shiftDateKey } from '../lib/dates';
 import { nextSrDate } from '../lib/study';
 import { useStore } from '../store/useStore';
 import { uid } from '../lib/id';
@@ -131,16 +132,20 @@ export function GoalEditorModal({
             />
 
             <Label>Target date</Label>
-            <TextInput
+            <DateTimeField
+              mode="date"
               value={targetDate}
-              onChangeText={setTargetDate}
+              onChange={setTargetDate}
               placeholder="yyyy-mm-dd (optional)"
-              placeholderTextColor={colors.textDim}
+              min={todayKey()}
               style={styles.input}
-              autoCapitalize="none"
             />
             <View style={styles.rowWrap}>
               <Chip label="Today" onPress={() => setTargetDate(todayKey())} />
+              <Chip label="+1 week" onPress={() => setTargetDate(shiftDateKey(todayKey(), 7))} />
+              <Chip label="+1 month" onPress={() => setTargetDate(shiftDateKey(todayKey(), 30))} />
+              <Chip label="+3 months" onPress={() => setTargetDate(shiftDateKey(todayKey(), 90))} />
+              {targetDate ? <Chip label="Clear" onPress={() => setTargetDate('')} /> : null}
             </View>
 
             <Label>Category</Label>
@@ -156,7 +161,7 @@ export function GoalEditorModal({
               ))}
             </View>
 
-            <Label>{`Sub-goals${milestones.length ? ` (${milestones.filter((m) => m.done).length}/${milestones.length})` : ''}`}</Label>
+            <Label>{`Milestones${milestones.length ? ` (${milestones.filter((m) => m.done).length}/${milestones.length})` : ''}`}</Label>
             <Text style={styles.subHint}>
               Break this goal into smaller checkable steps. You can tick them off as you progress.
             </Text>
@@ -177,7 +182,7 @@ export function GoalEditorModal({
               <TextInput
                 value={newMilestone}
                 onChangeText={setNewMilestone}
-                placeholder="Add a sub-goal…"
+                placeholder="Add a milestone…"
                 placeholderTextColor={colors.textDim}
                 style={[styles.input, styles.subAddInput]}
                 onSubmitEditing={addSubGoal}

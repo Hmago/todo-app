@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, TextInput, StyleProp, TextStyle } from 'react-native';
+import { Platform, TextInput, StyleProp, TextStyle, StyleSheet } from 'react-native';
 import { useTheme, radius, spacing, fontFamily } from '../theme';
 import { useResolvedTheme } from './ThemeProvider';
 
@@ -10,7 +10,7 @@ interface Props {
   placeholder?: string;
   /** Earliest selectable date (yyyy-mm-dd), date mode only. */
   min?: string;
-  /** Web only: extra style applied to the underlying input. */
+  /** Extra style applied to the underlying input (web + native). */
   style?: StyleProp<TextStyle>;
 }
 
@@ -24,6 +24,9 @@ export function DateTimeField({ mode, value, onChange, placeholder, min, style }
   const { isDark } = useResolvedTheme();
 
   if (Platform.OS === 'web') {
+    // Flatten any RN-style overrides (e.g. flex:1, marginBottom) so they
+    // win over the built-in defaults below.
+    const extra = StyleSheet.flatten(style) as Record<string, any> | undefined;
     return React.createElement('input', {
       type: mode,
       value: value || '',
@@ -43,6 +46,7 @@ export function DateTimeField({ mode, value, onChange, placeholder, min, style }
         outline: 'none',
         // Themes the native picker UI (calendar icon + popup).
         colorScheme: isDark ? 'dark' : 'light',
+        ...(extra ?? {}),
       },
     });
   }
