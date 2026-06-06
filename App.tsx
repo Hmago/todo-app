@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -101,20 +101,20 @@ function AppInner() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const goTab = (t: Tab) => {
+  const goTab = useCallback((t: Tab) => {
     setSub(null);
     setTab(t);
-  };
-  const back = () => setSub(null);
+  }, []);
+  const back = useCallback(() => setSub(null), []);
 
-  const select = (key: NavKey) => {
+  const select = useCallback((key: NavKey) => {
     if (key === 'myday' || key === 'important' || key === 'planned' || key === 'calendar') {
       setSub(null);
       setTab(key);
     } else {
       setSub(key as Route);
     }
-  };
+  }, []);
 
   const activeKey: NavKey = sub
     ? (sub as NavKey)

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { radius, spacing, fontFamily, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
 import { todayKey } from '../lib/dates';
-import { occursOn, isOccurrenceDone, occurrenceStatus } from '../lib/recurrence';
+import { occursOn, occurrenceStatus } from '../lib/recurrence';
 import { Tooltip } from './Tooltip';
 
 export type NavKey =
@@ -67,11 +67,33 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
   const [name, setName] = useState('');
   const [color, setColor] = useState(CATEGORY_COLORS[0]);
 
-  // "Open" counts exclude both completed AND skipped occurrences. Use
-  // occurrenceStatus instead of !isOccurrenceDone (which is strict completed-only).
-  const myDayCount = tasks.filter((t) => occursOn(t, today) && occurrenceStatus(t, today) === 'pending').length;
-  const importantCount = tasks.filter((t) => t.important && occurrenceStatus(t, t.date) === 'pending').length;
-  const plannedCount = tasks.filter((t) => occurrenceStatus(t, t.date) === 'pending').length;
+  // "Open" counts exclude completed AND skipped occurrences. We compute every
+  // sidebar count in a single O(tasks + tasks·categories) pass (instead of one
+  // pass per filter) and memoize on [tasks, categories, today] so unrelated
+  // local state changes (e.g. typing in the "new list" input) don't re-scan
+  // the task list. Sidebar is on-screen on every desktop view, so this matters.
+  const { myDayCount, importantCount, plannedCount, perCategoryCount } = useMemo(() => {
+    let myDay = 0;
+    let important = 0;
+    let planned = 0;
+    const perCat: Record<string, number> = Object.create(null);
+    for (const c of categories) perCat[c.id] = 0;
+    for (const t of tasks) {
+      const ownStatus = occurrenceStatus(t, t.date);
+      const isOpen = ownStatus === 'pending';
+      if (isOpen) {
+        planned += 1;
+        if (t.important) important += 1;
+        if (t.categoryId && perCat[t.categoryId] !== undefined) perCat[t.categoryId] += 1;
+      }
+      // My Day uses today's occurrence (not the task's own date), so it needs a
+      // separate occursOn + status check rather than the cached ownStatus.
+      if (occursOn(t, today) && occurrenceStatus(t, today) === 'pending') {
+        myDay += 1;
+      }
+    }
+    return { myDayCount: myDay, importantCount: important, plannedCount: planned, perCategoryCount: perCat };
+  }, [tasks, categories, today]);
 
   const create = () => {
     const n = name.trim();
@@ -115,7 +137,7 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
         <View style={styles.divider} />
 
         {categories.map((c) => {
-          const count = tasks.filter((t) => t.categoryId === c.id && occurrenceStatus(t, t.date) === 'pending').length;
+          const count = perCategoryCount[c.id] ?? 0;
           return (
             <NavItem
               key={c.id}

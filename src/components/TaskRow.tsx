@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, PanResponder, Platform, Easing } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Task } from '../types';
@@ -18,22 +18,7 @@ function notify(type: Haptics.NotificationFeedbackType) {
   if (Platform.OS === 'ios') Haptics.notificationAsync(type).catch(() => {});
 }
 
-export function TaskRow({
-  task,
-  dateKey,
-  done,
-  skipped,
-  showDate,
-  onToggle,
-  onSkip,
-  onPress,
-  onDelete,
-  onMoveUp,
-  onMoveDown,
-  isFirst,
-  isLast,
-  animateOnMount,
-}: {
+interface TaskRowProps {
   task: Task;
   dateKey: string;
   done: boolean;
@@ -55,7 +40,24 @@ export function TaskRow({
    * on toggle — the active row unmounts, so the new section's row gets the
    * animation flag instead. */
   animateOnMount?: boolean;
-}) {
+}
+
+function TaskRowImpl({
+  task,
+  dateKey,
+  done,
+  skipped,
+  showDate,
+  onToggle,
+  onSkip,
+  onPress,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  animateOnMount,
+}: TaskRowProps) {
   const styles = useThemedStyles(makeStyles);
   const colors = useTheme();
   const category = useStore((s) => s.categories.find((c) => c.id === task.categoryId));
@@ -139,6 +141,16 @@ export function TaskRow({
   const translateX = useRef(new Animated.Value(0)).current;
   const armed = useRef(false);
 
+  // PanResponder is created once on mount; reading callbacks through refs (kept
+  // fresh each render) prevents the swipe handler from firing a stale
+  // onToggle / onSkip / onDelete when the parent passes new closures after a
+  // status change, and also makes it safe for the parent to wrap the row in
+  // React.memo with a callback-identity-tolerant equality.
+  const handleCheckRef = useRef(handleCheck);
+  const onDeleteRef = useRef(onDelete);
+  handleCheckRef.current = handleCheck;
+  onDeleteRef.current = onDelete;
+
   const reset = () => Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
 
   const pan = useRef(
@@ -146,7 +158,7 @@ export function TaskRow({
       onMoveShouldSetPanResponder: (_e, g) =>
         Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
       onPanResponderMove: (_e, g) => {
-        const dx = onDelete ? g.dx : Math.max(0, g.dx); // only allow left-swipe when deletable
+        const dx = onDeleteRef.current ? g.dx : Math.max(0, g.dx); // only allow left-swipe when deletable
         translateX.setValue(dx);
         const past = Math.abs(dx) >= SWIPE_THRESHOLD;
         if (past && !armed.current) {
@@ -161,10 +173,11 @@ export function TaskRow({
         if (g.dx >= SWIPE_THRESHOLD) {
           notify(Haptics.NotificationFeedbackType.Success);
           Animated.timing(translateX, { toValue: 0, duration: 160, useNativeDriver: true }).start();
-          handleCheck();
-        } else if (g.dx <= -SWIPE_THRESHOLD && onDelete) {
+          handleCheckRef.current?.();
+        } else if (g.dx <= -SWIPE_THRESHOLD && onDeleteRef.current) {
           notify(Haptics.NotificationFeedbackType.Warning);
-          Animated.timing(translateX, { toValue: -500, duration: 160, useNativeDriver: true }).start(() => onDelete());
+          const fn = onDeleteRef.current;
+          Animated.timing(translateX, { toValue: -500, duration: 160, useNativeDriver: true }).start(() => fn?.());
         } else {
           reset();
         }
@@ -173,22 +186,29 @@ export function TaskRow({
     }),
   ).current;
 
-  const meta: string[] = [];
-  if (showDate) meta.push(prettyDate(task.date));
-  if (task.startDate && task.startDate !== task.date) meta.push(`Starts ${prettyDate(task.startDate)}`);
-  if (task.allDay) meta.push('All-day');
-  else if (task.time) meta.push(pretty12h(task.time));
-  const recLabel = recurrenceLabel(task);
-  if (recLabel) meta.push(recLabel);
+  // Building the meta line involves several array allocations + sort + map.
+  // Memoize on task identity so an unchanged row in a re-rendering parent
+  // doesn't rebuild this every time. (Task object refs are preserved by the
+  // store for unchanged tasks, so this keys cleanly on `task`.)
+  const meta = useMemo(() => {
+    const m: string[] = [];
+    if (showDate) m.push(prettyDate(task.date));
+    if (task.startDate && task.startDate !== task.date) m.push(`Starts ${prettyDate(task.startDate)}`);
+    if (task.allDay) m.push('All-day');
+    else if (task.time) m.push(pretty12h(task.time));
+    const recLabel = recurrenceLabel(task);
+    if (recLabel) m.push(recLabel);
+    if (task.links && task.links.length > 0) m.push(`🔗 ${task.links.length}`);
+    if (task.tags && task.tags.length > 0) m.push(task.tags.map((t) => `#${t}`).join(' '));
+    const reminders = task.reminders ?? [];
+    if (reminders.length === 1) m.push(`🔔 ${prettyReminder(reminders[0])}`);
+    else if (reminders.length > 1)
+      m.push(`🔔 ${prettyReminder([...reminders].sort()[0])} +${reminders.length - 1}`);
+    if (task.type === 'study') m.push('Study');
+    return m;
+  }, [task, showDate]);
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
-  if (task.links && task.links.length > 0) meta.push(`🔗 ${task.links.length}`);
-  if (task.tags && task.tags.length > 0) meta.push(task.tags.map((t) => `#${t}`).join(' '));
-  const reminders = task.reminders ?? [];
-  if (reminders.length === 1) meta.push(`🔔 ${prettyReminder(reminders[0])}`);
-  else if (reminders.length > 1)
-    meta.push(`🔔 ${prettyReminder([...reminders].sort()[0])} +${reminders.length - 1}`);
-  if (task.type === 'study') meta.push('Study');
 
   const showReorder = !!(onMoveUp || onMoveDown);
   const isDone = done || !!skipped;
@@ -528,3 +548,40 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   subItemText: { flex: 1, color: colors.text, fontSize: 13, fontFamily },
   subItemTextDone: { textDecorationLine: 'line-through', color: colors.textFaint },
 });
+
+/**
+ * Custom equality for React.memo. We INTENTIONALLY ignore callback identity
+ * (onToggle/onSkip/onPress/onDelete/onMoveUp/onMoveDown) and only compare
+ * presence (`!!`), because the parents (TaskListView, CalendarScreen,
+ * SearchScreen) pass freshly-bound closures every render that nonetheless
+ * close over only stable refs (string task id + dateKey + stable Zustand
+ * store actions + stable parent refs). Skipping the equality check on these
+ * lets us avoid re-rendering ~all rows on every store mutation; only the
+ * tasks whose `task` reference changed actually re-render.
+ *
+ * Invariant for callers: callbacks passed to TaskRow MUST only close over
+ * values that are either (a) compared in this equality function, or (b) read
+ * through a ref / stable Zustand selector. If you add a callback that closes
+ * over local component state (e.g. a filter, selected date, modal mode),
+ * either (i) read that state through a ref, or (ii) add the state to a prop
+ * compared here so the row re-renders when it changes.
+ */
+function taskRowEqual(prev: TaskRowProps, next: TaskRowProps): boolean {
+  return (
+    prev.task === next.task &&
+    prev.dateKey === next.dateKey &&
+    prev.done === next.done &&
+    prev.skipped === next.skipped &&
+    prev.showDate === next.showDate &&
+    prev.isFirst === next.isFirst &&
+    prev.isLast === next.isLast &&
+    prev.animateOnMount === next.animateOnMount &&
+    !!prev.onSkip === !!next.onSkip &&
+    !!prev.onDelete === !!next.onDelete &&
+    !!prev.onMoveUp === !!next.onMoveUp &&
+    !!prev.onMoveDown === !!next.onMoveDown
+  );
+}
+
+export const TaskRow = React.memo(TaskRowImpl, taskRowEqual);
+TaskRow.displayName = 'TaskRow';

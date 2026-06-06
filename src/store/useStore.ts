@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { persist } from 'zustand/middleware';
 import { Category, LearningGoal, LogEntry, Milestone, Task, StudySession, ResourceKind } from '../types';
 import { uid } from '../lib/id';
 import { toKey, addMonths, rollReminderToDate, todayKey } from '../lib/dates';
 import { nextOccurrence } from '../lib/recurrence';
 import { SR_INTERVALS, nextSrDate } from '../lib/study';
 import { recordHistory } from './useHistory';
+import { createDebouncedAsyncStorage } from './debouncedStorage';
 
 interface State {
   hydrated: boolean;
@@ -473,7 +473,10 @@ export const useStore = create<State>()(
     {
       name: 'learnplan-store-v3',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      // Debounced + lazy-serialized storage: coalesces bursts of mutations
+      // (typing, drag-reorder, undo/redo) into one JSON.stringify + write
+      // per ~250ms window. Flushes synchronously on web/Electron unload.
+      storage: createDebouncedAsyncStorage<Partial<State>>(),
       partialize: (s) => ({ categories: s.categories, tasks: s.tasks, goals: s.goals, logs: s.logs, studySessions: s.studySessions }),
       migrate: (persisted: any, _version: number) => {
         if (persisted && Array.isArray(persisted.tasks)) {

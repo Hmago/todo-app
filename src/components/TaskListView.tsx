@@ -179,15 +179,27 @@ export function TaskListView({
 
   // Arrow-button reorder (mobile + a11y) — reuses the same `onReorderMove` path
   // so all reorder writes go through the smart `setTaskOrder` store action.
-  const handleArrowMove = (taskId: string, dir: 'up' | 'down') => {
-    if (!onReorderMove) return;
-    const ids = active.map((a) => a.task.id);
+  //
+  // We read `active` and `onReorderMove` through refs (updated each render) so
+  // that the captured closure is always referencing the latest list/callback.
+  // This matters because TaskRow is wrapped in React.memo with an equality
+  // function that ignores callback identity — a memoized row would otherwise
+  // keep an old onMoveUp closure that calls into a stale handleArrowMove.
+  const activeRef = useRef(active);
+  const onReorderRef = useRef(onReorderMove);
+  activeRef.current = active;
+  onReorderRef.current = onReorderMove;
+
+  const handleArrowMove = React.useCallback((taskId: string, dir: 'up' | 'down') => {
+    const fn = onReorderRef.current;
+    if (!fn) return;
+    const ids = activeRef.current.map((a) => a.task.id);
     const idx = ids.indexOf(taskId);
     const j = dir === 'up' ? idx - 1 : idx + 1;
     if (idx < 0 || j < 0 || j >= ids.length) return;
     [ids[idx], ids[j]] = [ids[j], ids[idx]];
-    onReorderMove(ids);
-  };
+    fn(ids);
+  }, []);
 
   let lastGroup: string | undefined;
 

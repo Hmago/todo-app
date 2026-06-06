@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { radius, spacing, fontFamily, shadow, listThemes, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
@@ -121,10 +121,27 @@ export function HomeScreen({
   const categories = useStore((s) => s.categories);
   const today = todayKey();
 
-  // "Open" counts exclude both completed AND skipped occurrences.
-  const myDayCount = tasks.filter((t) => occursOn(t, today) && occurrenceStatus(t, today) === 'pending').length;
-  const importantCount = tasks.filter((t) => t.important && occurrenceStatus(t, t.date) === 'pending').length;
-  const plannedCount = tasks.filter((t) => occurrenceStatus(t, t.date) === 'pending').length;
+  // Single-pass count calc, memoized so navigating to/from Home doesn't
+  // re-scan all tasks four+ times. Matches the Sidebar's approach.
+  const { myDayCount, importantCount, plannedCount, perCategoryCount } = useMemo(() => {
+    let myDay = 0;
+    let important = 0;
+    let planned = 0;
+    const perCat: Record<string, number> = Object.create(null);
+    for (const c of categories) perCat[c.id] = 0;
+    for (const t of tasks) {
+      const isOpen = occurrenceStatus(t, t.date) === 'pending';
+      if (isOpen) {
+        planned += 1;
+        if (t.important) important += 1;
+        if (t.categoryId && perCat[t.categoryId] !== undefined) perCat[t.categoryId] += 1;
+      }
+      if (occursOn(t, today) && occurrenceStatus(t, today) === 'pending') {
+        myDay += 1;
+      }
+    }
+    return { myDayCount: myDay, importantCount: important, plannedCount: planned, perCategoryCount: perCat };
+  }, [tasks, categories, today]);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -144,7 +161,7 @@ export function HomeScreen({
       <Text style={styles.sectionLabel}>My lists</Text>
       <View style={styles.group}>
         {categories.map((c) => {
-          const count = tasks.filter((t) => t.categoryId === c.id && occurrenceStatus(t, t.date) === 'pending').length;
+          const count = perCategoryCount[c.id] ?? 0;
           return (
             <Row
               key={c.id}
