@@ -8,6 +8,8 @@ import { TaskRow } from './TaskRow';
 import { EmptyState } from './ui';
 import { Tooltip } from './Tooltip';
 import { occurrenceStatus } from '../lib/recurrence';
+import { bucketByDate } from '../lib/buckets';
+import { todayKey } from '../lib/dates';
 import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 
@@ -86,7 +88,7 @@ export function TaskListView({
   const reorderEnabled = !!onReorderMove;
   const dndEnabled = Platform.OS === 'web' && reorderEnabled;
 
-  const { active, completed, skipped } = useMemo(() => {
+  const { active, completed, skipped, completedGroups, skippedGroups } = useMemo(() => {
     const a: ListItem[] = [];
     const c: ListItem[] = [];
     const sk: ListItem[] = [];
@@ -96,7 +98,38 @@ export function TaskListView({
       else if (st === 'skipped') sk.push(it);
       else a.push(it);
     }
-    return { active: a, completed: c, skipped: sk };
+    // Outlook-style time buckets for completed / skipped lists. The "effective
+    // completion date" is the day the user actually clicked done (tracked in
+    // task.completedOn); for skipped items it's just the scheduled day since
+    // we don't record when the user clicked skip.
+    const today = todayKey();
+    const groupBy = (list: ListItem[], dateOf: (it: ListItem) => string) => {
+      const groups = new Map<number, { order: number; label: string; rows: { it: ListItem; d: string }[] }>();
+      for (const it of list) {
+        const d = dateOf(it);
+        const b = bucketByDate(d, today);
+        let g = groups.get(b.order);
+        if (!g) {
+          g = { order: b.order, label: b.label, rows: [] };
+          groups.set(b.order, g);
+        }
+        g.rows.push({ it, d });
+      }
+      return [...groups.values()]
+        .sort((x, y) => x.order - y.order)
+        .map((g) => ({
+          order: g.order,
+          label: g.label,
+          items: g.rows.sort((x, y) => y.d.localeCompare(x.d)).map((r) => r.it),
+        }));
+    };
+    return {
+      active: a,
+      completed: c,
+      skipped: sk,
+      completedGroups: groupBy(c, (it) => it.task.completedOn?.[it.dateKey] ?? it.dateKey),
+      skippedGroups: groupBy(sk, (it) => it.dateKey),
+    };
   }, [items]);
   const doneCount = completed.length + skipped.length;
 
@@ -344,19 +377,26 @@ export function TaskListView({
         {!hideCompleted && completed.length > 0 && (
           <View style={{ marginTop: spacing(1) }}>
             <Text style={[styles.doneTitle, { color: accent }]}>Completed {completed.length}</Text>
-            {completed.map((it) => (
-              <TaskRow
-                key={it.task.id + it.dateKey}
-                task={it.task}
-                dateKey={it.dateKey}
-                done
-                animateOnMount={animatingKey === it.task.id + it.dateKey}
-                showDate={it.showDate}
-                onToggle={() => toggleComplete(it.task.id, it.dateKey)}
-                onSkip={() => toggleSkip(it.task.id, it.dateKey)}
-                onPress={() => openEdit(it.task)}
-                onDelete={() => deleteTask(it.task.id)}
-              />
+            {completedGroups.map((g) => (
+              <View key={`cg-${g.order}`}>
+                {completedGroups.length > 1 && (
+                  <Text style={styles.doneSubgroup}>{g.label}</Text>
+                )}
+                {g.items.map((it) => (
+                  <TaskRow
+                    key={it.task.id + it.dateKey}
+                    task={it.task}
+                    dateKey={it.dateKey}
+                    done
+                    animateOnMount={animatingKey === it.task.id + it.dateKey}
+                    showDate={it.showDate}
+                    onToggle={() => toggleComplete(it.task.id, it.dateKey)}
+                    onSkip={() => toggleSkip(it.task.id, it.dateKey)}
+                    onPress={() => openEdit(it.task)}
+                    onDelete={() => deleteTask(it.task.id)}
+                  />
+                ))}
+              </View>
             ))}
           </View>
         )}
@@ -364,20 +404,27 @@ export function TaskListView({
         {!hideCompleted && skipped.length > 0 && (
           <View style={{ marginTop: spacing(1) }}>
             <Text style={[styles.doneTitle, { color: colors.warning }]}>Skipped {skipped.length}</Text>
-            {skipped.map((it) => (
-              <TaskRow
-                key={it.task.id + it.dateKey}
-                task={it.task}
-                dateKey={it.dateKey}
-                done={false}
-                skipped
-                animateOnMount={animatingKey === it.task.id + it.dateKey}
-                showDate={it.showDate}
-                onToggle={() => toggleComplete(it.task.id, it.dateKey)}
-                onSkip={() => toggleSkip(it.task.id, it.dateKey)}
-                onPress={() => openEdit(it.task)}
-                onDelete={() => deleteTask(it.task.id)}
-              />
+            {skippedGroups.map((g) => (
+              <View key={`sg-${g.order}`}>
+                {skippedGroups.length > 1 && (
+                  <Text style={styles.doneSubgroup}>{g.label}</Text>
+                )}
+                {g.items.map((it) => (
+                  <TaskRow
+                    key={it.task.id + it.dateKey}
+                    task={it.task}
+                    dateKey={it.dateKey}
+                    done={false}
+                    skipped
+                    animateOnMount={animatingKey === it.task.id + it.dateKey}
+                    showDate={it.showDate}
+                    onToggle={() => toggleComplete(it.task.id, it.dateKey)}
+                    onSkip={() => toggleSkip(it.task.id, it.dateKey)}
+                    onPress={() => openEdit(it.task)}
+                    onDelete={() => deleteTask(it.task.id)}
+                  />
+                ))}
+              </View>
             ))}
           </View>
         )}
@@ -421,5 +468,16 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     fontFamily,
     paddingVertical: spacing(1),
     paddingLeft: spacing(0.5),
+  },
+  doneSubgroup: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: spacing(1),
+    marginBottom: spacing(0.25),
+    marginLeft: spacing(0.5),
   },
 });
