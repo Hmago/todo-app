@@ -101,6 +101,14 @@ export const CATEGORY_COLORS = [
   '#3fd0c9',
   '#ff7ac3',
   '#9bd45a',
+  '#f97316',
+  '#eab308',
+  '#6366f1',
+  '#ec4899',
+  '#06b6d4',
+  '#16a34a',
+  '#a16207',
+  '#64748b',
 ];
 
 export const fontFamily = Platform.select({

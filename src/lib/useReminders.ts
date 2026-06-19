@@ -53,8 +53,43 @@ function agendaBody(): string {
   return `${items.length} task${items.length === 1 ? '' : 's'} today${titles ? `: ${titles}` : ''}`;
 }
 
+// Build a compact signature that captures only fields the reminder scheduler
+// cares about (which reminders exist, and which occurrences are already
+// done/skipped). Mutating an unrelated field like title or category leaves
+// this string unchanged so the host component doesn't re-render and the
+// timer-scheduling effect doesn't churn.
+function buildReminderSig(tasks: Task[]): string {
+  let s = '';
+  for (const t of tasks) {
+    const reminders = t.reminders;
+    if (!reminders || reminders.length === 0) continue;
+    s += t.id + '|r:' + reminders.join(',')
+       + '|c:' + t.completedDates.join(',')
+       + '|k:' + (t.skippedDates ?? []).join(',') + ';';
+  }
+  return s;
+}
+
+// Cache the signature by tasks-array reference. The store preserves the
+// tasks-array reference across non-task mutations (categories, goals, logs,
+// settings via a different store), so this short-circuits the O(N) signature
+// scan on every unrelated state update.
+let sigCacheTasks: Task[] | null = null;
+let sigCacheValue = '';
+function reminderSigSelector(s: { tasks: Task[] }): string {
+  if (s.tasks !== sigCacheTasks) {
+    sigCacheTasks = s.tasks;
+    sigCacheValue = buildReminderSig(s.tasks);
+  }
+  return sigCacheValue;
+}
+
 export function useReminders(): RemindersApi {
-  const tasks = useStore((s) => s.tasks);
+  // Subscribe to a string signature derived only from reminder-relevant fields
+  // instead of the full tasks array. AppInner hosts this hook, so this is the
+  // difference between re-rendering the whole shell on every task edit vs only
+  // when reminders actually change.
+  const reminderSig = useStore(reminderSigSelector);
   const toggleComplete = useStore((s) => s.toggleComplete);
   const updateTask = useStore((s) => s.updateTask);
   const settings = useSettings();
@@ -66,8 +101,17 @@ export function useReminders(): RemindersApi {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
-  const fire = (task: Task, reminder: string, key: string) => {
+  // Look up the latest task at fire time so the banner shows fresh title /
+  // category and we re-verify the reminder hasn't been removed or the
+  // occurrence completed/skipped while the timeout was pending.
+  const fire = (taskId: string, reminder: string, key: string) => {
     fired.current.add(key);
+    const task = useStore.getState().tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (!(task.reminders ?? []).includes(reminder)) return;
+    const occDate = reminder.slice(0, 10);
+    if (task.completedDates.includes(occDate)) return;
+    if ((task.skippedDates ?? []).includes(occDate)) return;
     if (!shouldNotify(settingsRef.current, task, new Date())) return;
     if (!canScheduleOS()) {
       showSystemNotification(`⏰ ${task.title}`, `Reminder · ${prettyReminder(reminder)}`);
@@ -85,6 +129,9 @@ export function useReminders(): RemindersApi {
     Object.values(timers.current).forEach((t) => clearTimeout(t));
     timers.current = {};
 
+    // Read tasks via getState() so we don't add `tasks` to the dep array;
+    // the signature gate above is what decides when to re-run this effect.
+    const tasks = useStore.getState().tasks;
     const now = Date.now();
     const entries: { key: string; task: Task; reminder: string; ts: number }[] = [];
     for (const task of tasks) {
@@ -124,12 +171,12 @@ export function useReminders(): RemindersApi {
       const delay = e.ts - now;
       if (delay <= 0) {
         if (-delay <= FIRE_GRACE_MS) {
-          timers.current[e.key] = setTimeout(() => fire(e.task, e.reminder, e.key), 400);
+          timers.current[e.key] = setTimeout(() => fire(e.task.id, e.reminder, e.key), 400);
         }
         continue;
       }
       timers.current[e.key] = setTimeout(
-        () => fire(e.task, e.reminder, e.key),
+        () => fire(e.task.id, e.reminder, e.key),
         Math.min(delay, MAX_TIMEOUT),
       );
     }
@@ -152,7 +199,7 @@ export function useReminders(): RemindersApi {
       Object.values(timers.current).forEach((t) => clearTimeout(t));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, settings, tick]);
+  }, [reminderSig, settings, tick]);
 
   const dismiss = (key: string) => setDue((prev) => prev.filter((d) => d.key !== key));
 

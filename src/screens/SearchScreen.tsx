@@ -7,7 +7,7 @@ import { useSavedFilters, SearchStatus } from '../store/useSavedFilters';
 import { TaskRow } from '../components/TaskRow';
 import { ListHeader } from '../components/ListHeader';
 import { Chip, EmptyState } from '../components/ui';
-import { isOccurrenceDone, isOccurrenceSkipped } from '../lib/recurrence';
+import { isOccurrenceDone, isOccurrenceSkipped, currentOccurrenceKey } from '../lib/recurrence';
 import { todayKey } from '../lib/dates';
 import { Task, Category } from '../types';
 
@@ -33,10 +33,13 @@ function matchesPreset(t: Task, preset: Preset, today: string): boolean {
   switch (preset) {
     case 'important':
       return !!t.important;
-    case 'overdue':
+    case 'overdue': {
       // Skipped tasks shouldn't appear as overdue — the user explicitly chose
-      // to skip that occurrence.
-      return t.date < today && !isOccurrenceDone(t, t.date) && !isOccurrenceSkipped(t, t.date);
+      // to skip that occurrence. For recurring tasks the current occurrence
+      // rolls forward, so they aren't perpetually "overdue" on a stale anchor.
+      const occ = currentOccurrenceKey(t, today);
+      return occ < today && !isOccurrenceDone(t, occ) && !isOccurrenceSkipped(t, occ);
+    }
     case 'recurring':
       return t.recurrence !== 'none' || !!t.recurrenceRule;
     case 'reminder':
@@ -81,7 +84,7 @@ export function SearchScreen({ onBack }: { onBack?: () => void }) {
       .filter((t) => {
         const matchesText = !q || haystack(t, catById.get(t.categoryId ?? '')).includes(q);
         const matchesCat = !catFilter || t.categoryId === catFilter;
-        const done = isOccurrenceDone(t, t.date);
+        const done = isOccurrenceDone(t, currentOccurrenceKey(t, today));
         const matchesStatus = status === 'all' || (status === 'done' ? done : !done);
         const matchesTag = !tag || (t.tags ?? []).includes(tag);
         const matchesPre = matchesPreset(t, preset, today);
@@ -204,19 +207,22 @@ export function SearchScreen({ onBack }: { onBack?: () => void }) {
         {results.length === 0 ? (
           <EmptyState icon="🔎" title="No matches" subtitle="Try a different keyword or filter." />
         ) : (
-          results.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              dateKey={t.date}
-              done={isOccurrenceDone(t, t.date)}
-              skipped={isOccurrenceSkipped(t, t.date)}
-              showDate
-              onToggle={() => toggleComplete(t.id, t.date)}
-              onSkip={() => toggleSkip(t.id, t.date)}
-              onPress={() => openEdit(t)}
-            />
-          ))
+          results.map((t) => {
+            const occ = currentOccurrenceKey(t, today);
+            return (
+              <TaskRow
+                key={t.id}
+                task={t}
+                dateKey={occ}
+                done={isOccurrenceDone(t, occ)}
+                skipped={isOccurrenceSkipped(t, occ)}
+                showDate
+                onToggle={() => toggleComplete(t.id, occ)}
+                onSkip={() => toggleSkip(t.id, occ)}
+                onPress={() => openEdit(t)}
+              />
+            );
+          })
         )}
         <View style={{ height: spacing(4) }} />
       </ScrollView>

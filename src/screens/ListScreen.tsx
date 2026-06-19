@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 import { TaskListView, ListItem } from '../components/TaskListView';
 import { todayKey } from '../lib/dates';
+import { currentOccurrenceKey } from '../lib/recurrence';
 import { quickAddToTask } from '../lib/quickAdd';
 
 function shade(hex: string, amt: number): string {
@@ -34,8 +35,8 @@ export function AllTasksScreen({ onBack }: { onBack?: () => void }) {
           if (ao !== bo) return ao - bo;
           return b.createdAt.localeCompare(a.createdAt);
         })
-        .map((task) => ({ task, dateKey: task.date, showDate: true })),
-    [tasks],
+        .map((task) => ({ task, dateKey: currentOccurrenceKey(task, today), showDate: true })),
+    [tasks, today],
   );
 
   return (
@@ -77,8 +78,8 @@ export function CategoryScreen({ categoryId, onBack }: { categoryId: string; onB
           if (ao !== bo) return ao - bo;
           return a.date.localeCompare(b.date);
         })
-        .map((task) => ({ task, dateKey: task.date, showDate: true })),
-    [tasks, categoryId],
+        .map((task) => ({ task, dateKey: currentOccurrenceKey(task, today), showDate: true })),
+    [tasks, categoryId, today],
   );
 
   const accent = category?.color ?? '#2b6a45';

@@ -7,10 +7,11 @@ import { ListHeader } from '../components/ListHeader';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { HourlyHistogram } from '../components/HourlyHistogram';
 import { GoalProgressList } from '../components/GoalProgressList';
+import { HabitAdherenceList } from '../components/HabitAdherence';
 import { DateTimeField } from '../components/DateTimeField';
 import { todayKey, toKey, fromKey, prettyDate, prettyDuration } from '../lib/dates';
 import { addDays, format, startOfMonth, startOfYear, isValid, parseISO } from 'date-fns';
-import { occursOn, isOccurrenceDone, expandRange } from '../lib/recurrence';
+import { occursOn, isOccurrenceDone, isOccurrenceSkipped, expandRange } from '../lib/recurrence';
 import { studyActiveDays, studyStreak, totalMinutesSince, minutesForGoal } from '../lib/study';
 import {
   dailySeries,
@@ -23,6 +24,7 @@ import {
   formatDelta,
   tagBreakdown,
   hourlyHistogram,
+  recurringHabitStats,
   Delta,
 } from '../lib/analytics';
 import {
@@ -122,7 +124,8 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
     const byCat = categories.map((c) => {
       const items = occRange.filter((o) => o.task.categoryId === c.id);
       const cdone = items.filter((o) => isOccurrenceDone(o.task, o.dateKey)).length;
-      return { category: c, total: items.length, done: cdone };
+      const cskip = items.filter((o) => isOccurrenceSkipped(o.task, o.dateKey)).length;
+      return { category: c, total: items.length, done: cdone, skipped: cskip };
     });
 
     const doneToday = tasks.filter((t) => occursOn(t, today) && isOccurrenceDone(t, today)).length;
@@ -186,6 +189,46 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
   }, [series, prev]);
 
   const tagStats = useMemo(() => tagBreakdown(tasks, from, to), [tasks, from, to]);
+
+  const habits = useMemo(() => recurringHabitStats(tasks, from, to), [tasks, from, to]);
+
+  // Lifetime, all-time totals across every task in the store. Used for the
+  // "Lifetime totals" card at the top of the screen, which gives a stable
+  // sense of overall volume independent of the date-range filter.
+  const lifetime = useMemo(() => {
+    let totalCompleted = 0;
+    let totalSkipped = 0;
+    type Bucket = { added: number; done: number; skipped: number };
+    const perCat = new Map<string, Bucket>();
+    let uncategorized: Bucket = { added: 0, done: 0, skipped: 0 };
+    const ensure = (id: string): Bucket => {
+      let v = perCat.get(id);
+      if (!v) { v = { added: 0, done: 0, skipped: 0 }; perCat.set(id, v); }
+      return v;
+    };
+    for (const t of tasks) {
+      const done = t.completedDates.length;
+      const skip = t.skippedDates?.length ?? 0;
+      totalCompleted += done;
+      totalSkipped += skip;
+      const target = t.categoryId ? ensure(t.categoryId) : uncategorized;
+      target.added += 1;
+      target.done += done;
+      target.skipped += skip;
+    }
+    const byCat = categories.map((c) => ({
+      category: c,
+      ...(perCat.get(c.id) ?? { added: 0, done: 0, skipped: 0 }),
+    }));
+    return {
+      totalTasks: tasks.length,
+      totalCompleted,
+      totalSkipped,
+      byCat,
+      uncategorized,
+    };
+  }, [tasks, categories]);
+
   const hourStats = useMemo(
     () => hourlyHistogram(tasks, studySessions, from, to),
     [tasks, studySessions, from, to],
@@ -266,6 +309,54 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
         ) : null}
+
+        <SectionTitle>Lifetime totals</SectionTitle>
+        <View style={styles.kpiRow}>
+          <Kpi label="Tasks added" value={`${lifetime.totalTasks}`} color={colors.primary} />
+          <Kpi label="Completed" value={`${lifetime.totalCompleted}`} color={colors.success} />
+          <Kpi label="Skipped" value={`${lifetime.totalSkipped}`} color={colors.warning} />
+        </View>
+        <Card style={{ marginBottom: spacing(2) }}>
+          {lifetime.totalTasks === 0 ? (
+            <Text style={styles.dim}>No tasks yet — add a task to start tracking.</Text>
+          ) : (
+            <>
+              {lifetime.byCat
+                .filter((b) => b.added > 0)
+                .sort((a, b) => b.added - a.added)
+                .map((b) => {
+                  const denom = Math.max(1, b.done + b.skipped);
+                  return (
+                    <View key={b.category.id} style={styles.catRow}>
+                      <View style={styles.catHeader}>
+                        <View style={[styles.dot, { backgroundColor: b.category.color }]} />
+                        <Text style={styles.catName} numberOfLines={1}>{b.category.name}</Text>
+                        <Text style={styles.catCount}>
+                          {b.added} added · {b.done} done · {b.skipped} skipped
+                        </Text>
+                      </View>
+                      <ProgressBar value={b.done / denom} color={b.category.color} />
+                    </View>
+                  );
+                })}
+              {lifetime.uncategorized.added > 0 && (
+                <View style={styles.catRow}>
+                  <View style={styles.catHeader}>
+                    <View style={[styles.dot, { backgroundColor: colors.textFaint }]} />
+                    <Text style={styles.catName} numberOfLines={1}>Uncategorized</Text>
+                    <Text style={styles.catCount}>
+                      {lifetime.uncategorized.added} added · {lifetime.uncategorized.done} done · {lifetime.uncategorized.skipped} skipped
+                    </Text>
+                  </View>
+                  <ProgressBar
+                    value={lifetime.uncategorized.done / Math.max(1, lifetime.uncategorized.done + lifetime.uncategorized.skipped)}
+                    color={colors.textFaint}
+                  />
+                </View>
+              )}
+            </>
+          )}
+        </Card>
 
         <SectionTitle>Overview</SectionTitle>
         <View style={styles.rangeRow}>
@@ -444,7 +535,7 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
                   <View style={[styles.dot, { backgroundColor: b.category.color }]} />
                   <Text style={styles.catName}>{b.category.name}</Text>
                   <Text style={styles.catCount}>
-                    {b.done}/{b.total}
+                    {b.done}/{b.total}{b.skipped > 0 ? ` · ${b.skipped} skipped` : ''}
                   </Text>
                 </View>
                 <ProgressBar value={b.total ? b.done / b.total : 0} color={b.category.color} />
@@ -473,6 +564,11 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
               </View>
             ))
           )}
+        </Card>
+
+        <SectionTitle>Habits / recurring ({rangeDays}d)</SectionTitle>
+        <Card style={{ marginBottom: spacing(2) }}>
+          <HabitAdherenceList habits={habits} />
         </Card>
 
         <SectionTitle>Goal progress</SectionTitle>

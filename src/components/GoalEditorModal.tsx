@@ -15,7 +15,7 @@ import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
 import { AppModal } from './AppModal';
 import { DateTimeField } from './DateTimeField';
-import { todayKey, shiftDateKey } from '../lib/dates';
+import { todayKey } from '../lib/dates';
 import { nextSrDate } from '../lib/study';
 import { useStore } from '../store/useStore';
 import { uid } from '../lib/id';
@@ -140,13 +140,11 @@ export function GoalEditorModal({
               min={todayKey()}
               style={styles.input}
             />
-            <View style={styles.rowWrap}>
-              <Chip label="Today" onPress={() => setTargetDate(todayKey())} />
-              <Chip label="+1 week" onPress={() => setTargetDate(shiftDateKey(todayKey(), 7))} />
-              <Chip label="+1 month" onPress={() => setTargetDate(shiftDateKey(todayKey(), 30))} />
-              <Chip label="+3 months" onPress={() => setTargetDate(shiftDateKey(todayKey(), 90))} />
-              {targetDate ? <Chip label="Clear" onPress={() => setTargetDate('')} /> : null}
-            </View>
+            {targetDate ? (
+              <View style={styles.rowWrap}>
+                <Chip label="Clear" onPress={() => setTargetDate('')} />
+              </View>
+            ) : null}
 
             <Label>Category</Label>
             <View style={styles.rowWrap}>

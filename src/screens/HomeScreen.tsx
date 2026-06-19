@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { radius, spacing, fontFamily, shadow, listThemes, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
+import { useUIPrefs } from '../store/useUIPrefs';
 import { todayKey } from '../lib/dates';
-import { occursOn, occurrenceStatus } from '../lib/recurrence';
+import { occursOn, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
 
 export type Route =
   | 'tasks'
@@ -119,6 +120,7 @@ export function HomeScreen({
   const styles = useThemedStyles(makeStyles);
   const tasks = useStore((s) => s.tasks);
   const categories = useStore((s) => s.categories);
+  const hideOverdue = useUIPrefs((s) => s.hideOverdueInMyDay);
   const today = todayKey();
 
   // Single-pass count calc, memoized so navigating to/from Home doesn't
@@ -130,18 +132,30 @@ export function HomeScreen({
     const perCat: Record<string, number> = Object.create(null);
     for (const c of categories) perCat[c.id] = 0;
     for (const t of tasks) {
-      const isOpen = occurrenceStatus(t, t.date) === 'pending';
+      // Evaluate each task at its current occurrence (today / next due for
+      // recurring tasks) rather than its fixed anchor date, so a completed
+      // recurring occurrence doesn't make the task vanish from these counts.
+      const occ = currentOccurrenceKey(t, today);
+      const isOpen = occurrenceStatus(t, occ) === 'pending';
       if (isOpen) {
         planned += 1;
         if (t.important) important += 1;
         if (t.categoryId && perCat[t.categoryId] !== undefined) perCat[t.categoryId] += 1;
       }
-      if (occursOn(t, today) && occurrenceStatus(t, today) === 'pending') {
+      // Mirror MyDayScreen: today's pending occurrences plus overdue
+      // one-shot pending tasks (skipped when the user has hidden overdue).
+      // The `occursToday` branch handles recurring tasks that hit today; the
+      // overdue branch only fires for occurrences that fall before today
+      // (recurring tasks roll forward, so they never linger as overdue).
+      const occursToday = occursOn(t, today);
+      if (occursToday && occurrenceStatus(t, today) === 'pending') {
+        myDay += 1;
+      } else if (!hideOverdue && occ < today && isOpen) {
         myDay += 1;
       }
     }
     return { myDayCount: myDay, importantCount: important, plannedCount: planned, perCategoryCount: perCat };
-  }, [tasks, categories, today]);
+  }, [tasks, categories, today, hideOverdue]);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>

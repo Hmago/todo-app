@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, PanResponder, Platform, Easing } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Task } from '../types';
+import { Task, Priority } from '../types';
 import { radius, spacing, fontFamily, shadow, useTheme, useThemedStyles, Palette } from '../theme';
 import { pretty12h, prettyDate, prettyReminder } from '../lib/dates';
 import { recurrenceLabel } from '../lib/recurrence';
@@ -68,6 +68,13 @@ function TaskRowImpl({
   const estimateLevelValue = estimateLevelOf(task.estimateMinutes);
   const estimateColor = (lvl: EstimateLevel) =>
     lvl === 'low' ? colors.success : lvl === 'medium' ? colors.warning : colors.danger;
+
+  // Priority badge mirrors the effort badge. Medium is the default value, so we
+  // only surface low / high to keep the list uncluttered.
+  const showPriority = task.priority === 'low' || task.priority === 'high';
+  const priorityColor = (p: Priority) =>
+    p === 'low' ? colors.success : p === 'medium' ? colors.warning : colors.danger;
+  const priorityLabel = (p: Priority) => p.charAt(0).toUpperCase() + p.slice(1);
 
   // Tapping the status circle reverts whatever state the row is currently in:
   //  pending → complete (onToggle), completed → pending (onToggle),
@@ -192,8 +199,9 @@ function TaskRowImpl({
   // store for unchanged tasks, so this keys cleanly on `task`.)
   const meta = useMemo(() => {
     const m: string[] = [];
-    if (showDate) m.push(prettyDate(task.date));
+    if (showDate) m.push(prettyDate(dateKey));
     if (task.startDate && task.startDate !== task.date) m.push(`Starts ${prettyDate(task.startDate)}`);
+    if (task.targetDate) m.push(`🎯 ${prettyDate(task.targetDate)}`);
     if (task.allDay) m.push('All-day');
     else if (task.time) m.push(pretty12h(task.time));
     const recLabel = recurrenceLabel(task);
@@ -206,7 +214,7 @@ function TaskRowImpl({
       m.push(`🔔 ${prettyReminder([...reminders].sort()[0])} +${reminders.length - 1}`);
     if (task.type === 'study') m.push('Study');
     return m;
-  }, [task, showDate]);
+  }, [task, showDate, dateKey]);
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
 
@@ -214,6 +222,13 @@ function TaskRowImpl({
   const isDone = done || !!skipped;
   const showSkipBtn = !!onSkip && !done && !skipped;
   const swipeLabel = isDone ? '↺  Undo' : '✓  Complete';
+
+  const renderLevelBadge = (key: string, label: string, color: string) => (
+    <View key={key} style={[styles.levelBadge, { borderColor: color }]}>
+      <View style={[styles.levelDot, { backgroundColor: color }]} />
+      <Text style={[styles.levelText, { color }]}>{label}</Text>
+    </View>
+  );
 
   return (
     <View style={styles.wrap}>
@@ -309,29 +324,20 @@ function TaskRowImpl({
                     <Text style={[styles.statusChipText, { color: colors.warning }]}>Skipped</Text>
                   </View>
                 ) : null}
-                {estimateLevelValue ? (
-                  <View
-                    style={[
-                      styles.estimateBadge,
-                      { borderColor: estimateColor(estimateLevelValue) },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.estimateDot,
-                        { backgroundColor: estimateColor(estimateLevelValue) },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.estimateText,
-                        { color: estimateColor(estimateLevelValue) },
-                      ]}
-                    >
-                      {estimateLabel(estimateLevelValue)}
-                    </Text>
-                  </View>
-                ) : null}
+                {showPriority
+                  ? renderLevelBadge(
+                      'priority',
+                      `Priority - ${priorityLabel(task.priority)}`,
+                      priorityColor(task.priority),
+                    )
+                  : null}
+                {estimateLevelValue
+                  ? renderLevelBadge(
+                      'effort',
+                      `Effort - ${estimateLabel(estimateLevelValue)}`,
+                      estimateColor(estimateLevelValue),
+                    )
+                  : null}
                 {subtasks.length > 0 ? (
                   <Pressable
                     onPress={() => setSubtasksExpanded((v) => !v)}
@@ -507,7 +513,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     backgroundColor: colors.primaryDim,
   },
   subChipText: { color: colors.primary, fontSize: 11, fontWeight: '700', fontFamily },
-  estimateBadge: {
+  levelBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
@@ -517,8 +523,8 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     marginLeft: 4,
     backgroundColor: 'transparent',
   },
-  estimateDot: { width: 6, height: 6, borderRadius: 3, marginRight: 4 },
-  estimateText: { fontSize: 11, fontWeight: '700', fontFamily },
+  levelDot: { width: 6, height: 6, borderRadius: 3, marginRight: 4 },
+  levelText: { fontSize: 11, fontWeight: '700', fontFamily },
   subList: {
     paddingLeft: spacing(5.5),
     paddingRight: spacing(1.75),

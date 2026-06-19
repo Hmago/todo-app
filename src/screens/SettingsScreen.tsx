@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Switch } from 'react-native';
 import { AppModal } from '../components/AppModal';
 import { radius, spacing, fontFamily, shadow, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
+import { Category } from '../types';
 import { useSettings } from '../store/useSettings';
 import { useOnboarding } from '../store/useOnboarding';
 import { useThemePref } from '../store/useThemePref';
@@ -19,19 +20,151 @@ import {
   BackupSummary,
 } from '../lib/backup';
 import { initInstallPrompt, promptInstall, isStandalone } from '../lib/pwa';
+import { getStorageUsageBytes, formatBytes } from '../lib/storage';
 import {
   getPermission,
   requestPermission,
   notificationsSupported,
   PermissionState,
 } from '../lib/notifications';
+import { DateTimeField } from '../components/DateTimeField';
+import { exportDailyLogs, summarizeDailyLogs } from '../lib/logExport';
+import { todayKey, toKey, fromKey } from '../lib/dates';
+import { addDays, startOfMonth, isValid } from 'date-fns';
+
+function ListRow({
+  category,
+  count,
+  isFirst,
+  isLast,
+  onMove,
+  onUpdate,
+  onDelete,
+}: {
+  category: Category;
+  count: number;
+  isFirst: boolean;
+  isLast: boolean;
+  onMove: (dir: 'up' | 'down') => void;
+  onUpdate: (patch: Partial<Category>) => void;
+  onDelete: () => void;
+}) {
+  const colors = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(category.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Re-seed the rename field and clear the delete confirm whenever the editor
+  // opens or the category changes underneath us.
+  useEffect(() => {
+    if (editing) {
+      setName(category.name);
+      setConfirmDelete(false);
+    }
+  }, [editing, category.name]);
+
+  const commitName = () => {
+    const n = name.trim();
+    if (n && n !== category.name) onUpdate({ name: n });
+    else setName(category.name);
+  };
+
+  return (
+    <View style={styles.listCard}>
+      <View style={styles.listRowTop}>
+        <View style={[styles.dot, { backgroundColor: category.color }]} />
+        <Text style={styles.catName} numberOfLines={1}>{category.name}</Text>
+        <Text style={styles.catCount}>{count} task{count === 1 ? '' : 's'}</Text>
+        <View style={styles.listReorder}>
+          <Pressable
+            onPress={() => onMove('up')}
+            disabled={isFirst}
+            hitSlop={6}
+            style={styles.reorderBtn}
+            accessibilityLabel="Move list up"
+          >
+            <Text style={[styles.reorderIcon, isFirst && styles.reorderDisabled]}>▲</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onMove('down')}
+            disabled={isLast}
+            hitSlop={6}
+            style={styles.reorderBtn}
+            accessibilityLabel="Move list down"
+          >
+            <Text style={[styles.reorderIcon, isLast && styles.reorderDisabled]}>▼</Text>
+          </Pressable>
+        </View>
+        <Pressable
+          onPress={() => setEditing((v) => !v)}
+          hitSlop={8}
+          accessibilityLabel={`Edit list ${category.name}`}
+        >
+          <Text style={styles.editLink}>{editing ? 'Close' : 'Edit'}</Text>
+        </Pressable>
+      </View>
+
+      {editing ? (
+        <View style={styles.listEditor}>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="List name"
+            placeholderTextColor={colors.textDim}
+            style={styles.input}
+            onBlur={commitName}
+            onSubmitEditing={commitName}
+            returnKeyType="done"
+          />
+          <View style={styles.swatchRow}>
+            {CATEGORY_COLORS.map((col) => (
+              <Pressable
+                key={col}
+                onPress={() => onUpdate({ color: col })}
+                style={[styles.swatch, { backgroundColor: col }, category.color === col && styles.swatchActive]}
+                accessibilityLabel={`Set list color`}
+              />
+            ))}
+          </View>
+          <View style={styles.listEditorActions}>
+            <Pressable
+              onPress={() => (confirmDelete ? onDelete() : setConfirmDelete(true))}
+              hitSlop={6}
+              accessibilityLabel={`Delete list ${category.name}`}
+            >
+              <Text style={styles.delete}>{confirmDelete ? 'Confirm delete?' : 'Delete list'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+type LogRangeKey = '7d' | '30d' | 'mtd' | 'all' | 'custom';
+const LOG_RANGES: { key: LogRangeKey; label: string }[] = [
+  { key: '7d', label: '7 days' },
+  { key: '30d', label: '30 days' },
+  { key: 'mtd', label: 'This month' },
+  { key: 'all', label: 'All time' },
+  { key: 'custom', label: 'Custom' },
+];
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function validLogDate(s: string): boolean {
+  return ISO_DATE_RE.test(s) && isValid(fromKey(s));
+}
 
 export function SettingsScreen({ onBack }: { onBack?: () => void }) {
   const colors = useTheme();
   const styles = useThemedStyles(makeStyles);
   const categories = useStore((s) => s.categories);
   const tasks = useStore((s) => s.tasks);
+  const logs = useStore((s) => s.logs);
   const addCategory = useStore((s) => s.addCategory);
+  const updateCategory = useStore((s) => s.updateCategory);
+  const moveCategory = useStore((s) => s.moveCategory);
   const deleteCategory = useStore((s) => s.deleteCategory);
   const settings = useSettings();
   const themeMode = useThemePref((s) => s.mode);
@@ -48,10 +181,37 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
   const [pasteText, setPasteText] = useState('');
   const [dataMsg, setDataMsg] = useState<string | null>(null);
 
+  // Daily log export
+  const [logRange, setLogRange] = useState<LogRangeKey>('30d');
+  const [logFrom, setLogFrom] = useState(() => toKey(addDays(new Date(), -29)));
+  const [logTo, setLogTo] = useState(() => todayKey());
+  const [logMsg, setLogMsg] = useState<string | null>(null);
+
   // PWA install
   const [installAvailable, setInstallAvailable] = useState(false);
   const [installed, setInstalled] = useState(isStandalone());
   useEffect(() => initInstallPrompt(setInstallAvailable), []);
+
+  // Storage usage. Measured from the persisted stores and refreshed whenever the
+  // amount of data changes (e.g. after an import, or adding/removing a list).
+  const [storageBytes, setStorageBytes] = useState<number | null>(null);
+  const goalCount = useStore((s) => s.goals.length);
+  const logCount = useStore((s) => s.logs.length);
+  const sessionCount = useStore((s) => s.studySessions.length);
+  useEffect(() => {
+    let cancelled = false;
+    // Give the debounced persist (~250ms) time to flush so the figure reflects
+    // the latest data when something changed while Settings is open.
+    const t = setTimeout(() => {
+      getStorageUsageBytes().then((b) => {
+        if (!cancelled) setStorageBytes(b);
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [tasks.length, categories.length, goalCount, logCount, sessionCount]);
 
   const onInstall = async () => {
     const res = await promptInstall();
@@ -64,6 +224,61 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
   const flashData = (m: string) => {
     setDataMsg(m);
     setTimeout(() => setDataMsg((cur) => (cur === m ? null : cur)), 4000);
+  };
+
+  const flashLog = (m: string) => {
+    setLogMsg(m);
+    setTimeout(() => setLogMsg((cur) => (cur === m ? null : cur)), 4000);
+  };
+
+  const logRangeValid = validLogDate(logFrom) && validLogDate(logTo) && logFrom <= logTo;
+
+  const logSummary = useMemo(
+    () => (logRangeValid ? summarizeDailyLogs({ from: logFrom, to: logTo, logs, tasks }) : null),
+    [logRangeValid, logFrom, logTo, logs, tasks],
+  );
+
+  const applyLogRange = (key: LogRangeKey) => {
+    setLogRange(key);
+    const today = todayKey();
+    if (key === '7d') {
+      setLogFrom(toKey(addDays(new Date(), -6)));
+      setLogTo(today);
+    } else if (key === '30d') {
+      setLogFrom(toKey(addDays(new Date(), -29)));
+      setLogTo(today);
+    } else if (key === 'mtd') {
+      setLogFrom(toKey(startOfMonth(new Date())));
+      setLogTo(today);
+    } else if (key === 'all') {
+      const dates: string[] = [];
+      for (const l of logs) dates.push(l.date);
+      for (const t of tasks) for (const d of t.completedDates) dates.push(d);
+      setLogFrom(dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : today);
+      setLogTo(today);
+    }
+    // 'custom' keeps the current From/To values.
+  };
+
+  const onExportLogs = () => {
+    if (!logRangeValid) {
+      flashLog('Enter valid dates as YYYY-MM-DD (from ≤ to).');
+      return;
+    }
+    const r = exportDailyLogs(logFrom, logTo);
+    if (r.logCount + r.taskCount + r.missedCount + r.skippedCount === 0) {
+      flashLog('No activity in that range.');
+      return;
+    }
+    const verb = canPickFile ? 'Downloaded' : 'Ready to share';
+    const extra =
+      (r.missedCount > 0 ? `, ${r.missedCount} missed` : '') +
+      (r.skippedCount > 0 ? `, ${r.skippedCount} skipped` : '');
+    flashLog(
+      `${verb}: ${r.activeDays} day${r.activeDays === 1 ? '' : 's'}, ` +
+        `${r.logCount} log${r.logCount === 1 ? '' : 's'}, ` +
+        `${r.taskCount} task${r.taskCount === 1 ? '' : 's'}${extra}.`,
+    );
   };
 
   const reviewText = (text: string | null) => {
@@ -272,19 +487,18 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
         {categories.length === 0 ? (
           <EmptyState icon="📋" title="No lists yet" />
         ) : (
-          categories.map((c) => {
-            const count = tasks.filter((t) => t.categoryId === c.id).length;
-            return (
-              <View key={c.id} style={styles.catRow}>
-                <View style={[styles.dot, { backgroundColor: c.color }]} />
-                <Text style={styles.catName}>{c.name}</Text>
-                <Text style={styles.catCount}>{count} task{count === 1 ? '' : 's'}</Text>
-                <Pressable onPress={() => deleteCategory(c.id)} hitSlop={8}>
-                  <Text style={styles.delete}>Delete</Text>
-                </Pressable>
-              </View>
-            );
-          })
+          categories.map((c, i) => (
+            <ListRow
+              key={c.id}
+              category={c}
+              count={tasks.filter((t) => t.categoryId === c.id).length}
+              isFirst={i === 0}
+              isLast={i === categories.length - 1}
+              onMove={(dir) => moveCategory(c.id, dir)}
+              onUpdate={(patch) => updateCategory(c.id, patch)}
+              onDelete={() => deleteCategory(c.id)}
+            />
+          ))
         )}
 
         <SectionTitle>About</SectionTitle>
@@ -309,6 +523,12 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
 
         <SectionTitle>Backup & data</SectionTitle>
         <Card>
+          <View style={styles.storageRow}>
+            <Text style={styles.storageLabel}>Storage used</Text>
+            <Text style={styles.storageValue}>
+              {storageBytes == null ? '…' : formatBytes(storageBytes)}
+            </Text>
+          </View>
           <Text style={styles.aboutText}>
             Export a full backup of your lists, tasks, goals, logs, focus sessions, saved searches and
             settings as a JSON file. Import it on another device or after reinstalling.
@@ -320,6 +540,82 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
           <Text style={styles.dataHint}>Importing replaces all current data on this device.</Text>
           {dataMsg ? <Text style={styles.dataMsg}>{dataMsg}</Text> : null}
         </Card>
+
+        <SectionTitle>Export daily logs</SectionTitle>
+        <Card>
+          <Text style={styles.aboutText}>
+            Save your daily logs and completed tasks for a date range as a formatted text file,
+            neatly segregated day by day. Great for journals, standups or weekly reviews.
+          </Text>
+
+          <View style={[styles.rangeRow, { marginTop: spacing(1.5) }]}>
+            {LOG_RANGES.map((r) => {
+              const active = logRange === r.key;
+              return (
+                <Pressable
+                  key={r.key}
+                  onPress={() => applyLogRange(r.key)}
+                  style={[styles.rangeBtn, active && styles.rangeBtnActive]}
+                >
+                  <Text style={[styles.rangeText, active && styles.rangeTextActive]}>{r.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.logDateRow}>
+            <View style={styles.logDateField}>
+              <Text style={styles.logDateLabel}>From</Text>
+              <DateTimeField
+                mode="date"
+                value={logFrom}
+                onChange={(v) => {
+                  setLogFrom(v);
+                  setLogRange('custom');
+                }}
+                style={styles.logDateInput}
+              />
+            </View>
+            <Text style={styles.logDateSep}>→</Text>
+            <View style={styles.logDateField}>
+              <Text style={styles.logDateLabel}>To</Text>
+              <DateTimeField
+                mode="date"
+                value={logTo}
+                onChange={(v) => {
+                  setLogTo(v);
+                  setLogRange('custom');
+                }}
+                min={validLogDate(logFrom) ? logFrom : undefined}
+                style={styles.logDateInput}
+              />
+            </View>
+          </View>
+
+          {logRangeValid ? (
+            logSummary ? (
+              <Text style={styles.dataHint}>
+                {logSummary.activeDays} active day{logSummary.activeDays === 1 ? '' : 's'} ·{' '}
+                {logSummary.logCount} log{logSummary.logCount === 1 ? '' : 's'} ·{' '}
+                {logSummary.taskCount} completed task{logSummary.taskCount === 1 ? '' : 's'}
+                {logSummary.missedCount > 0 ? ` · ${logSummary.missedCount} missed` : ''}
+                {logSummary.skippedCount > 0 ? ` · ${logSummary.skippedCount} skipped` : ''}{' '}
+                in range.
+              </Text>
+            ) : null
+          ) : (
+            <Text style={styles.dateErrorText}>Enter valid dates as YYYY-MM-DD (from ≤ to).</Text>
+          )}
+
+          <Button
+            title="⬇ Export logs (.txt)"
+            small
+            style={{ marginTop: spacing(1.5) }}
+            onPress={onExportLogs}
+          />
+          {logMsg ? <Text style={styles.dataMsg}>{logMsg}</Text> : null}
+        </Card>
+
         <View style={{ height: spacing(4) }} />
       </ScrollView>
 
@@ -409,9 +705,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing(1), marginBottom: spacing(1.5) },
   swatch: { width: 30, height: 30, borderRadius: 8, borderWidth: 2, borderColor: 'transparent' },
   swatchActive: { borderColor: colors.text },
-  catRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  listCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -420,6 +714,14 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     marginBottom: spacing(1),
     ...shadow,
   },
+  listRowTop: { flexDirection: 'row', alignItems: 'center' },
+  listReorder: { flexDirection: 'row', alignItems: 'center', marginRight: spacing(1) },
+  reorderBtn: { paddingHorizontal: spacing(0.5), paddingVertical: 2 },
+  reorderIcon: { color: colors.textDim, fontSize: 13, fontWeight: '700' },
+  reorderDisabled: { opacity: 0.3 },
+  editLink: { color: colors.primary, fontSize: 13, fontWeight: '700', fontFamily },
+  listEditor: { marginTop: spacing(1.5) },
+  listEditorActions: { flexDirection: 'row', justifyContent: 'flex-end' },
   dot: { width: 14, height: 14, borderRadius: 7, marginRight: spacing(1.25) },
   catName: { color: colors.text, fontSize: 15, fontWeight: '600', flex: 1, fontFamily },
   catCount: { color: colors.textDim, fontSize: 12, marginRight: spacing(1.5), fontFamily },
@@ -462,6 +764,14 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   btnRow: { flexDirection: 'row', gap: spacing(1) },
   dataHint: { color: colors.textDim, fontSize: 12, marginTop: spacing(1), fontStyle: 'italic', fontFamily },
   dataMsg: { color: colors.primary, fontSize: 13, fontWeight: '700', marginTop: spacing(1), fontFamily },
+  storageRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: spacing(1.5),
+  },
+  storageLabel: { color: colors.text, fontSize: 14, fontWeight: '600', fontFamily },
+  storageValue: { color: colors.primary, fontSize: 14, fontWeight: '800', fontFamily },
   installedNote: { color: colors.textDim, fontSize: 13, fontWeight: '600', marginTop: spacing(1.5), fontFamily },
   modalBackdrop: {
     flex: 1,
@@ -493,4 +803,39 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     textAlignVertical: 'top',
     marginBottom: spacing(1.5),
   },
+  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing(1), marginBottom: spacing(1.5) },
+  rangeBtn: {
+    paddingVertical: spacing(0.75),
+    paddingHorizontal: spacing(1.5),
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  rangeBtnActive: { borderColor: colors.primary, backgroundColor: colors.primary + '22' },
+  rangeText: { color: colors.textDim, fontSize: 13, fontWeight: '600', fontFamily },
+  rangeTextActive: { color: colors.primary, fontWeight: '800' },
+  logDateRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing(1), marginBottom: spacing(1) },
+  logDateField: { flex: 1 },
+  logDateLabel: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily,
+    marginBottom: spacing(0.5),
+  },
+  logDateInput: {
+    marginBottom: 0,
+    paddingVertical: spacing(0.75),
+    paddingHorizontal: spacing(1.25),
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily,
+    fontSize: 13,
+  },
+  logDateSep: { color: colors.textDim, fontSize: 14, fontWeight: '700', paddingBottom: spacing(1) },
+  dateErrorText: { color: colors.danger, fontSize: 12, marginTop: spacing(0.5), fontFamily },
 });

@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { radius, spacing, fontFamily, CATEGORY_COLORS, useTheme, useThemedStyles, Palette } from '../theme';
 import { useStore } from '../store/useStore';
+import { useUIPrefs } from '../store/useUIPrefs';
 import { todayKey } from '../lib/dates';
-import { occursOn, occurrenceStatus } from '../lib/recurrence';
+import { occursOn, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
 import { Tooltip } from './Tooltip';
 
 export type NavKey =
@@ -61,6 +62,7 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
   const tasks = useStore((s) => s.tasks);
   const categories = useStore((s) => s.categories);
   const addCategory = useStore((s) => s.addCategory);
+  const hideOverdue = useUIPrefs((s) => s.hideOverdueInMyDay);
   const today = todayKey();
 
   const [creating, setCreating] = useState(false);
@@ -79,21 +81,30 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
     const perCat: Record<string, number> = Object.create(null);
     for (const c of categories) perCat[c.id] = 0;
     for (const t of tasks) {
-      const ownStatus = occurrenceStatus(t, t.date);
+      // Evaluate each task at its current occurrence (today / next due for
+      // recurring tasks) instead of its fixed anchor date, so completing a
+      // recurring occurrence doesn't drop it from these "open" counts.
+      const occ = currentOccurrenceKey(t, today);
+      const ownStatus = occurrenceStatus(t, occ);
       const isOpen = ownStatus === 'pending';
       if (isOpen) {
         planned += 1;
         if (t.important) important += 1;
         if (t.categoryId && perCat[t.categoryId] !== undefined) perCat[t.categoryId] += 1;
       }
-      // My Day uses today's occurrence (not the task's own date), so it needs a
-      // separate occursOn + status check rather than the cached ownStatus.
-      if (occursOn(t, today) && occurrenceStatus(t, today) === 'pending') {
+      // My Day counts what MyDayScreen actually lists: pending occurrences
+      // on today, plus overdue tasks whose current occurrence is past and
+      // still pending (when the user hasn't hidden the overdue group).
+      // Recurring tasks roll forward, so they only count under "today".
+      const occursToday = occursOn(t, today);
+      if (occursToday && occurrenceStatus(t, today) === 'pending') {
+        myDay += 1;
+      } else if (!hideOverdue && occ < today && isOpen) {
         myDay += 1;
       }
     }
     return { myDayCount: myDay, importantCount: important, plannedCount: planned, perCategoryCount: perCat };
-  }, [tasks, categories, today]);
+  }, [tasks, categories, today, hideOverdue]);
 
   const create = () => {
     const n = name.trim();
@@ -125,7 +136,7 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
         <NavItem icon="⭐" label="Important" count={importantCount} active={active === 'important'} onPress={() => onSelect('important')} />
         <NavItem icon="🗓️" label="Planned" count={plannedCount} active={active === 'planned'} onPress={() => onSelect('planned')} />
         <NavItem icon="📅" label="Calendar" active={active === 'calendar'} onPress={() => onSelect('calendar')} />
-        <NavItem icon="🏠" label="Tasks" count={tasks.length} active={active === 'tasks'} onPress={() => onSelect('tasks')} />
+        <NavItem icon="🏠" label="Tasks" count={plannedCount} active={active === 'tasks'} onPress={() => onSelect('tasks')} />
 
         <View style={styles.divider} />
 
@@ -187,7 +198,7 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
       </ScrollView>
 
       <View style={styles.footer}>
-        <Tooltip label="New list" placement="top">
+        <Tooltip label="New list" placement="top" style={styles.footerBtnWrap}>
           <Pressable
             onPress={() => setCreating((v) => !v)}
             style={({ hovered }: any) => [styles.footerBtn, hovered && styles.itemHover]}
@@ -290,6 +301,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     paddingHorizontal: spacing(1),
     paddingVertical: spacing(1),
   },
+  footerBtnWrap: { flex: 1 },
   footerBtn: {
     flex: 1,
     flexDirection: 'row',

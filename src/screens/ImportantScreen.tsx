@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 import { TaskListView, ListItem } from '../components/TaskListView';
 import { todayKey } from '../lib/dates';
+import { currentOccurrenceKey } from '../lib/recurrence';
 import { quickAddToTask } from '../lib/quickAdd';
 
 export function ImportantScreen() {
@@ -23,8 +24,8 @@ export function ImportantScreen() {
           if (ao !== bo) return ao - bo;
           return a.date.localeCompare(b.date);
         })
-        .map((task) => ({ task, dateKey: task.date, showDate: true })),
-    [tasks],
+        .map((task) => ({ task, dateKey: currentOccurrenceKey(task, today), showDate: true })),
+    [tasks, today],
   );
 
   return (

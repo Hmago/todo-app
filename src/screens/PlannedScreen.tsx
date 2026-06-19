@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
 import { TaskListView, ListItem } from '../components/TaskListView';
 import { todayKey, toKey } from '../lib/dates';
+import { currentOccurrenceKey } from '../lib/recurrence';
 import { quickAddToTask } from '../lib/quickAdd';
 import { addDays } from 'date-fns';
 
@@ -26,10 +27,13 @@ export function PlannedScreen() {
 
   const items: ListItem[] = useMemo(() => {
     return tasks
-      .map((task) => ({ task, b: bucket(task.date) }))
-      .sort((a, b) => a.b.order - b.b.order || a.task.date.localeCompare(b.task.date))
-      .map(({ task, b }) => ({ task, dateKey: task.date, showDate: true, groupLabel: b.label }));
-  }, [tasks]);
+      .map((task) => {
+        const dk = currentOccurrenceKey(task, today);
+        return { task, dk, b: bucket(dk) };
+      })
+      .sort((a, b) => a.b.order - b.b.order || a.dk.localeCompare(b.dk))
+      .map(({ task, dk, b }) => ({ task, dateKey: dk, showDate: true, groupLabel: b.label }));
+  }, [tasks, today]);
 
   return (
     <TaskListView

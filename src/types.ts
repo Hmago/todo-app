@@ -37,6 +37,8 @@ export interface Task {
   date: string;
   /** Optional start date 'yyyy-MM-dd' (when work can begin). */
   startDate?: string;
+  /** Optional target completion date 'yyyy-MM-dd' (deadline the user is aiming for). */
+  targetDate?: string;
   /** True when the task has no specific time (all-day). */
   allDay?: boolean;
   /** Optional time 'HH:mm' */
@@ -49,6 +51,8 @@ export interface Task {
   recurrence: RecurrenceFreq;
   /** Advanced recurrence; overrides `recurrence` when set. */
   recurrenceRule?: RecurrenceRule;
+  /** Recurring tasks stop repeating after this date ('yyyy-MM-dd', inclusive). Undefined = never ends. */
+  recurrenceEnd?: string;
   /** Flagged as important (To Do star) */
   important?: boolean;
   /** Checklist of subtasks. */

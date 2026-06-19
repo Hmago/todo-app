@@ -7,8 +7,23 @@ import { ListHeader } from '../components/ListHeader';
 import { AddTaskBar } from '../components/AddTaskBar';
 import { EmptyState } from '../components/ui';
 import { fromKey, toKey, todayKey, prettyDate } from '../lib/dates';
+import { occursOn, occurrenceStatus, isRecurring, OccurrenceStatus } from '../lib/recurrence';
 
 const ACCENT = listThemes.log.accent;
+
+/** Status badge (label / colour / glyph) for a recurring occurrence on a day. */
+function recurStatusMeta(
+  colors: Palette,
+  status: OccurrenceStatus,
+  selected: string,
+  today: string,
+): { label: string; color: string; icon: string } {
+  if (status === 'completed') return { label: 'Done', color: colors.success, icon: '✓' };
+  if (status === 'skipped') return { label: 'Skipped', color: colors.textFaint, icon: '⤼' };
+  if (selected < today) return { label: 'Missed', color: colors.danger, icon: '✕' };
+  if (selected === today) return { label: 'Due', color: colors.primary, icon: '○' };
+  return { label: 'Scheduled', color: colors.textDim, icon: '○' };
+}
 
 export function DailyLogScreen({ onBack }: { onBack?: () => void }) {
   const styles = useThemedStyles(makeStyles);
@@ -17,6 +32,8 @@ export function DailyLogScreen({ onBack }: { onBack?: () => void }) {
   const tasks = useStore((s) => s.tasks);
   const addLog = useStore((s) => s.addLog);
   const deleteLog = useStore((s) => s.deleteLog);
+  const colors = useTheme();
+  const today = todayKey();
 
   const dayLogs = useMemo(
     () =>
@@ -26,12 +43,39 @@ export function DailyLogScreen({ onBack }: { onBack?: () => void }) {
     [logs, selected],
   );
 
-  const completedTasks = useMemo(
-    () => tasks.filter((t) => t.completedDates.includes(selected)),
+  const oneOffCompleted = useMemo(
+    () => tasks.filter((t) => !isRecurring(t) && t.completedDates.includes(selected)),
     [tasks, selected],
   );
 
-  const isToday = selected === todayKey();
+  // Recurring occurrences scheduled on the selected day, tracked with their
+  // status so missed / skipped / due habits are visible — not just completed
+  // ones. Missed (past pending) surface first, then due-today, completed, then
+  // skipped and future scheduled.
+  const recurring = useMemo(() => {
+    const rank = (status: OccurrenceStatus): number => {
+      if (status === 'completed') return 2;
+      if (status === 'skipped') return 3;
+      if (selected < today) return 0; // missed
+      if (selected === today) return 1; // due today
+      return 4; // scheduled (future)
+    };
+    return tasks
+      .filter((t) => isRecurring(t) && occursOn(t, selected))
+      .map((task) => ({ task, status: occurrenceStatus(task, selected) }))
+      .sort((a, b) => rank(a.status) - rank(b.status) || a.task.title.localeCompare(b.task.title));
+  }, [tasks, selected, today]);
+
+  const recurDone = useMemo(
+    () => recurring.filter((r) => r.status === 'completed').length,
+    [recurring],
+  );
+  const recurMissed = useMemo(
+    () => recurring.filter((r) => r.status === 'pending' && selected < today).length,
+    [recurring, selected, today],
+  );
+
+  const isToday = selected === today;
   const shift = (days: number) => setSelected(toKey(addDays(fromKey(selected), days)));
 
   return (
@@ -40,7 +84,9 @@ export function DailyLogScreen({ onBack }: { onBack?: () => void }) {
         themeKey="log"
         icon="📝"
         title="Daily Log"
-        subtitle={`${dayLogs.length + completedTasks.length} completed`}
+        subtitle={`${dayLogs.length + oneOffCompleted.length + recurDone} done${
+          recurMissed ? ` · ${recurMissed} missed` : ''
+        }`}
         onBack={onBack}
       />
 
@@ -73,10 +119,35 @@ export function DailyLogScreen({ onBack }: { onBack?: () => void }) {
           ))
         )}
 
-        {completedTasks.length > 0 && (
+        {recurring.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>Recurring</Text>
+            {recurring.map(({ task, status }) => {
+              const m = recurStatusMeta(colors, status, selected, today);
+              return (
+                <View key={task.id} style={styles.item}>
+                  <Text style={[styles.check, { color: m.color }]}>{m.icon}</Text>
+                  <Text
+                    style={[styles.itemText, status === 'skipped' && styles.itemTextMuted]}
+                    numberOfLines={2}
+                  >
+                    {task.title}
+                  </Text>
+                  <Text
+                    style={[styles.statusTag, { color: m.color, backgroundColor: m.color + '1f' }]}
+                  >
+                    {m.label}
+                  </Text>
+                </View>
+              );
+            })}
+          </>
+        )}
+
+        {oneOffCompleted.length > 0 && (
           <>
             <Text style={styles.sectionLabel}>Completed tasks</Text>
-            {completedTasks.map((t) => (
+            {oneOffCompleted.map((t) => (
               <View key={t.id} style={styles.item}>
                 <Text style={styles.check}>✓</Text>
                 <Text style={styles.itemText}>{t.title}</Text>
@@ -161,4 +232,14 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     paddingVertical: 2,
     borderRadius: radius.pill,
   },
+  statusTag: {
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily,
+    paddingHorizontal: spacing(1),
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    overflow: 'hidden',
+  },
+  itemTextMuted: { color: colors.textDim, textDecorationLine: 'line-through' },
 });

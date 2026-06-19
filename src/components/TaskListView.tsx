@@ -12,6 +12,7 @@ import { bucketByDate } from '../lib/buckets';
 import { todayKey } from '../lib/dates';
 import { useStore } from '../store/useStore';
 import { useUI } from '../store/useUI';
+import { useUIPrefs } from '../store/useUIPrefs';
 
 export interface ListItem {
   task: Task;
@@ -36,6 +37,7 @@ export function TaskListView({
   gradient,
   onBack,
   onReorderMove,
+  toolbarExtra,
 }: {
   themeKey: string;
   icon?: string;
@@ -54,6 +56,11 @@ export function TaskListView({
   /** When provided, enables drag-and-reorder (web) plus arrow-button reorder.
    *  Receives the new ordered active-id sequence. */
   onReorderMove?: (orderedActiveIds: string[]) => void;
+  /** Optional extra content rendered in the toolbar row alongside the
+   *  built-in "Hide done" chip. Useful for per-screen toggles (e.g. My Day's
+   *  "Hide overdue"). The toolbar is shown whenever this is provided, even
+   *  when there are no completed items. */
+  toolbarExtra?: React.ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
   const theme = listThemes[themeKey] ?? listThemes.tasks;
@@ -64,7 +71,10 @@ export function TaskListView({
   const deleteTask = useStore((s) => s.deleteTask);
   const categories = useStore((s) => s.categories);
   const openEdit = useUI((s) => s.openEdit);
-  const [hideCompleted, setHideCompleted] = useState(false);
+  // Completed + skipped tasks are collapsed by default across every list; the
+  // choice is persisted (and shared by all lists) via UI prefs.
+  const hideCompleted = useUIPrefs((s) => s.completedCollapsed);
+  const toggleCompleted = useUIPrefs((s) => s.toggleCompletedCollapsed);
   // Tracks the task occurrence whose status just flipped pending → done/skipped
   // so the newly-mounted row in the completed/skipped section can play a pop.
   const [animatingKey, setAnimatingKey] = useState<string | null>(null);
@@ -327,20 +337,23 @@ export function TaskListView({
         onBack={onBack}
       />
       <ScrollView style={styles.body} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {doneCount > 0 ? (
+        {doneCount > 0 || toolbarExtra ? (
           <View style={styles.toolbar}>
-            <Tooltip label={hideCompleted ? 'Show completed and skipped tasks' : 'Hide completed and skipped tasks'} placement="bottom">
-              <Pressable
-                onPress={() => setHideCompleted((v) => !v)}
-                hitSlop={6}
-                style={[styles.toggleChip, { borderColor: accent }]}
-                accessibilityLabel={hideCompleted ? 'Show done tasks' : 'Hide done tasks'}
-              >
-                <Text style={[styles.toggleChipText, { color: accent }]}>
-                  {hideCompleted ? '👁  Show' : '🙈  Hide'} done ({doneCount})
-                </Text>
-              </Pressable>
-            </Tooltip>
+            {toolbarExtra}
+            {doneCount > 0 ? (
+              <Tooltip label={hideCompleted ? 'Show completed and skipped tasks' : 'Hide completed and skipped tasks'} placement="bottom">
+                <Pressable
+                  onPress={toggleCompleted}
+                  hitSlop={6}
+                  style={[styles.toggleChip, { borderColor: accent }]}
+                  accessibilityLabel={hideCompleted ? 'Show done tasks' : 'Hide done tasks'}
+                >
+                  <Text style={[styles.toggleChipText, { color: accent }]}>
+                    {hideCompleted ? '👁  Show' : '🙈  Hide'} done ({doneCount})
+                  </Text>
+                </Pressable>
+              </Tooltip>
+            ) : null}
           </View>
         ) : null}
 
@@ -379,9 +392,7 @@ export function TaskListView({
             <Text style={[styles.doneTitle, { color: accent }]}>Completed {completed.length}</Text>
             {completedGroups.map((g) => (
               <View key={`cg-${g.order}`}>
-                {completedGroups.length > 1 && (
-                  <Text style={styles.doneSubgroup}>{g.label}</Text>
-                )}
+                <Text style={styles.doneSubgroup}>{g.label}</Text>
                 {g.items.map((it) => (
                   <TaskRow
                     key={it.task.id + it.dateKey}
@@ -406,9 +417,7 @@ export function TaskListView({
             <Text style={[styles.doneTitle, { color: colors.warning }]}>Skipped {skipped.length}</Text>
             {skippedGroups.map((g) => (
               <View key={`sg-${g.order}`}>
-                {skippedGroups.length > 1 && (
-                  <Text style={styles.doneSubgroup}>{g.label}</Text>
-                )}
+                <Text style={styles.doneSubgroup}>{g.label}</Text>
                 {g.items.map((it) => (
                   <TaskRow
                     key={it.task.id + it.dateKey}
@@ -452,6 +461,8 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: spacing(1),
     marginBottom: spacing(1),
   },
   toggleChip: {

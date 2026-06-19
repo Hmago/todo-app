@@ -20,6 +20,7 @@ interface State {
   addCategory: (name: string, color: string) => string;
   updateCategory: (id: string, patch: Partial<Category>) => void;
   deleteCategory: (id: string) => void;
+  moveCategory: (id: string, dir: 'up' | 'down') => void;
 
   // task actions
   addTask: (t: Omit<Task, 'id' | 'createdAt' | 'completedDates'>) => void;
@@ -114,6 +115,16 @@ export const useStore = create<State>()(
           categories: s.categories.filter((c) => c.id !== id),
           tasks: s.tasks.map((t) => (t.categoryId === id ? { ...t, categoryId: undefined } : t)),
         })),
+
+      moveCategory: (id, dir) =>
+        set((s) => {
+          const idx = s.categories.findIndex((c) => c.id === id);
+          const j = dir === 'up' ? idx - 1 : idx + 1;
+          if (idx < 0 || j < 0 || j >= s.categories.length) return { categories: s.categories };
+          const next = [...s.categories];
+          [next[idx], next[j]] = [next[j], next[idx]];
+          return { categories: next };
+        }),
 
       addTask: (t) =>
         set((s) => {

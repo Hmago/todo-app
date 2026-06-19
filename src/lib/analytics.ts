@@ -1,5 +1,5 @@
 import { Task, StudySession, LearningGoal } from '../types';
-import { occursOn, isOccurrenceDone, isOccurrenceSkipped, expandRange } from './recurrence';
+import { occursOn, isOccurrenceDone, isOccurrenceSkipped, expandRange, occurrenceStatus, OccurrenceStatus, isRecurring } from './recurrence';
 import { shiftDateKey, toKey, fromKey, todayKey } from './dates';
 import { startOfWeek, format, differenceInCalendarDays } from 'date-fns';
 
@@ -404,3 +404,150 @@ export const GOAL_STATUS_LABEL: Record<GoalStatus, string> = {
   overdue: 'Overdue',
   'no-target': 'No target',
 };
+
+// ---------------------------------------------------------------------------
+// Recurring-task adherence (habits)
+// ---------------------------------------------------------------------------
+
+export interface HabitDay {
+  key: string;
+  status: OccurrenceStatus;
+  /** This occurrence is today and still pending (actionable, not yet missed). */
+  isToday: boolean;
+}
+
+export interface HabitStat {
+  task: Task;
+  /** Occurrences scheduled in the window, up to and including today. */
+  expected: number;
+  done: number;
+  skipped: number;
+  /** Past occurrences neither completed nor skipped. */
+  missed: number;
+  /** Today is an occurrence that is still pending. */
+  pendingToday: boolean;
+  /** done / (done + missed); skipped and today-pending are excused. 0 when nothing resolved. */
+  rate: number;
+  /** Consecutive completed occurrences ending at the latest one (skips/today neutral). */
+  currentStreak: number;
+  /** Longest run of completed occurrences in the window (skips/today neutral). */
+  longestStreak: number;
+  /** Most recent completed occurrence key in the window, or null. */
+  lastDone: string | null;
+  /** Trailing occurrences (oldest→newest, capped) for a compact dot strip. */
+  recent: HabitDay[];
+}
+
+/** How many trailing occurrences the dot strip keeps. */
+export const HABIT_RECENT_MAX = 14;
+
+/**
+ * Per-task adherence for one recurring task across the inclusive window
+ * [from, to], clamped to start no earlier than the task's first date and to end
+ * no later than today (future occurrences aren't "missed" yet). Skipped
+ * occurrences are excused — they don't count against the rate or break streaks —
+ * matching the day-series logic used elsewhere.
+ */
+export function habitStats(task: Task, from: string, to: string, today = todayKey()): HabitStat {
+  const start = from < task.date ? task.date : from;
+  const end = to < today ? to : today;
+
+  const days: HabitDay[] = [];
+  let expected = 0;
+  let done = 0;
+  let skipped = 0;
+  let missed = 0;
+  let pendingToday = false;
+  let lastDone: string | null = null;
+
+  if (start <= end) {
+    let cur = start;
+    let guard = 0;
+    while (cur <= end && guard < 4000) {
+      if (occursOn(task, cur)) {
+        const status = occurrenceStatus(task, cur);
+        const isToday = cur === today;
+        expected++;
+        if (status === 'completed') {
+          done++;
+          lastDone = cur;
+        } else if (status === 'skipped') {
+          skipped++;
+        } else if (isToday) {
+          pendingToday = true;
+        } else {
+          missed++;
+        }
+        days.push({ key: cur, status, isToday });
+      }
+      cur = shiftDateKey(cur, 1);
+      guard++;
+    }
+  }
+
+  const resolved = done + missed;
+  const rate = resolved > 0 ? done / resolved : 0;
+
+  // Current streak: walk occurrences backwards. A completed day extends it, a
+  // skipped day or a still-pending today is neutral, a missed day ends it.
+  let currentStreak = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const d = days[i];
+    if (d.status === 'completed') currentStreak++;
+    else if (d.status === 'skipped') continue;
+    else if (d.isToday) continue;
+    else break;
+  }
+
+  // Longest streak: same rules, scanning forward.
+  let longestStreak = 0;
+  let run = 0;
+  for (const d of days) {
+    if (d.status === 'completed') {
+      run++;
+      if (run > longestStreak) longestStreak = run;
+    } else if (d.status === 'skipped') {
+      continue;
+    } else if (d.isToday) {
+      continue;
+    } else {
+      run = 0;
+    }
+  }
+
+  return {
+    task,
+    expected,
+    done,
+    skipped,
+    missed,
+    pendingToday,
+    rate,
+    currentStreak,
+    longestStreak,
+    lastDone,
+    recent: days.slice(-HABIT_RECENT_MAX),
+  };
+}
+
+/**
+ * Adherence stats for every recurring task that has at least one occurrence in
+ * the window, sorted by follow-through (completions, then rate, then title).
+ */
+export function recurringHabitStats(
+  tasks: Task[],
+  from: string,
+  to: string,
+  today = todayKey(),
+): HabitStat[] {
+  const out: HabitStat[] = [];
+  for (const t of tasks) {
+    if (!isRecurring(t)) continue;
+    const h = habitStats(t, from, to, today);
+    if (h.expected > 0) out.push(h);
+  }
+  out.sort(
+    (a, b) => b.done - a.done || b.rate - a.rate || a.task.title.localeCompare(b.task.title),
+  );
+  return out;
+}
