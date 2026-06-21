@@ -201,6 +201,22 @@ export function useReminders(): RemindersApi {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reminderSig, settings, tick]);
 
+  // Re-arm timers when the app returns to the foreground. iOS Safari (and other
+  // mobile browsers) throttle or pause background setTimeout, so a reminder
+  // whose fire time elapsed while the PWA was backgrounded won't have fired.
+  // Bumping `tick` re-runs the scheduling effect with a fresh clock so any
+  // just-due reminders are delivered promptly on resume.
+  useEffect(() => {
+    const g: any = globalThis;
+    const doc = g.document;
+    if (!doc || !doc.addEventListener) return;
+    const onVisible = () => {
+      if (doc.visibilityState === 'visible') setTick((t) => t + 1);
+    };
+    doc.addEventListener('visibilitychange', onVisible);
+    return () => doc.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
   const dismiss = (key: string) => setDue((prev) => prev.filter((d) => d.key !== key));
 
   const complete = (d: DueReminder) => {

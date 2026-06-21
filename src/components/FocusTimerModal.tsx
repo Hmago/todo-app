@@ -37,6 +37,15 @@ export function FocusTimerModal({
   const [running, setRunning] = useState(false);
   const [completed, setCompleted] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Wall-clock target the countdown is racing toward while running. We derive
+  // the displayed time from this instead of decrementing a counter, because
+  // iOS Safari throttles/pauses setInterval for backgrounded PWAs — a
+  // counter-based timer would freeze or drift, but recomputing from Date.now()
+  // stays correct and self-heals the instant the app is foregrounded again.
+  const endAtRef = useRef<number | null>(null);
+  // Guards the one-shot completion side effects (log + notification) so a
+  // resume that lands past the end time can't fire them twice.
+  const firedRef = useRef(false);
 
   const clear = () => {
     if (intervalRef.current) {
@@ -51,33 +60,74 @@ export function FocusTimerModal({
       setSecondsLeft(25 * 60);
       setRunning(false);
       setCompleted(false);
+      endAtRef.current = null;
+      firedRef.current = false;
     } else {
       clear();
     }
   }, [visible]);
 
+  const finish = (logMinutes: number) => {
+    clear();
+    endAtRef.current = null;
+    setRunning(false);
+    setCompleted(true);
+    setSecondsLeft(0);
+    if (!firedRef.current) {
+      firedRef.current = true;
+      logStudySession({ goalId, minutes: logMinutes });
+      showSystemNotification(
+        'Focus session complete 🎉',
+        `${logMinutes} min logged${goalTitle ? ` · ${goalTitle}` : ''}`,
+      );
+    }
+  };
+
   useEffect(() => {
     if (!running) {
       clear();
+      // Drop the anchor so the next Start/Resume re-derives the end time from
+      // the preserved `secondsLeft` — otherwise time spent paused (or
+      // backgrounded while paused) would wrongly count down on resume.
+      endAtRef.current = null;
       return;
     }
-    intervalRef.current = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          clear();
-          setRunning(false);
-          setCompleted(true);
-          logStudySession({ goalId, minutes });
-          showSystemNotification(
-            'Focus session complete 🎉',
-            `${minutes} min logged${goalTitle ? ` · ${goalTitle}` : ''}`,
-          );
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return clear;
+    firedRef.current = false;
+    // Anchor the countdown to a fixed end timestamp derived from the remaining
+    // seconds at the moment we (re)start, then tick off the wall clock.
+    if (endAtRef.current == null) endAtRef.current = Date.now() + secondsLeft * 1000;
+
+    const sync = () => {
+      const end = endAtRef.current;
+      if (end == null) return;
+      const remaining = Math.max(0, Math.round((end - Date.now()) / 1000));
+      if (remaining <= 0) {
+        finish(minutes);
+        return;
+      }
+      setSecondsLeft(remaining);
+    };
+
+    // 250ms cadence keeps the display smooth and snaps it back to the correct
+    // value within a frame of the app resuming, rather than waiting a full
+    // (throttled) second.
+    intervalRef.current = setInterval(sync, 250);
+
+    // Recompute the moment the tab/app becomes visible again — on iOS the
+    // interval itself won't have been firing while backgrounded.
+    const g: any = globalThis;
+    const doc = g.document;
+    const onVisible = () => {
+      if (!doc || doc.visibilityState === 'visible') sync();
+    };
+    if (doc && doc.addEventListener) doc.addEventListener('visibilitychange', onVisible);
+    sync();
+
+    return () => {
+      clear();
+      if (doc && doc.removeEventListener) doc.removeEventListener('visibilitychange', onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
 
   const pickPreset = (m: number) => {
@@ -86,12 +136,15 @@ export function FocusTimerModal({
     setCompleted(false);
     setMinutes(m);
     setSecondsLeft(m * 60);
+    endAtRef.current = null;
+    firedRef.current = false;
   };
 
   const elapsedMin = Math.round((minutes * 60 - secondsLeft) / 60);
 
   const logAndClose = () => {
     clear();
+    endAtRef.current = null;
     if (!completed && elapsedMin >= 1) {
       logStudySession({ goalId, minutes: elapsedMin });
     }
