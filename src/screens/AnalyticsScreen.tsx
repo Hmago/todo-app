@@ -289,6 +289,7 @@ export function AnalyticsScreen({ onBack }: { onBack?: () => void }) {
         categoryId,
         tags: p.tags,
         date: p.date,
+        targetDate: p.date,
         time: p.time,
         priority: p.priority,
         recurrence: p.recurrence,

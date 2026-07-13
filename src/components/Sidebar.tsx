@@ -4,7 +4,7 @@ import { radius, spacing, fontFamily, CATEGORY_COLORS, useTheme, useThemedStyles
 import { useStore } from '../store/useStore';
 import { useUIPrefs } from '../store/useUIPrefs';
 import { todayKey } from '../lib/dates';
-import { occursOn, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
+import { occursOn, isRecurring, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
 import { Tooltip } from './Tooltip';
 
 export type NavKey =
@@ -92,14 +92,14 @@ export function Sidebar({ active, onSelect }: { active: NavKey; onSelect: (key: 
         if (t.important) important += 1;
         if (t.categoryId && perCat[t.categoryId] !== undefined) perCat[t.categoryId] += 1;
       }
-      // My Day counts what MyDayScreen actually lists: pending occurrences
-      // on today, plus overdue tasks whose current occurrence is past and
-      // still pending (when the user hasn't hidden the overdue group).
-      // Recurring tasks roll forward, so they only count under "today".
-      const occursToday = occursOn(t, today);
-      if (occursToday && occurrenceStatus(t, today) === 'pending') {
-        myDay += 1;
-      } else if (!hideOverdue && occ < today && isOpen) {
+      // My Day counts what MyDayScreen actually lists: pending tasks whose target
+      // date is today (or recurring tasks that fall due today), plus overdue
+      // non-recurring tasks whose target date has passed and are still pending
+      // (when the overdue group isn't hidden).
+      const inMyDayToday = t.targetDate === today || (isRecurring(t) && occursOn(t, today));
+      if (inMyDayToday) {
+        if (isOpen) myDay += 1;
+      } else if (!hideOverdue && !isRecurring(t) && !!t.targetDate && t.targetDate < today && isOpen) {
         myDay += 1;
       }
     }

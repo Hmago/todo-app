@@ -4,7 +4,7 @@ import { radius, spacing, fontFamily, shadow, listThemes, CATEGORY_COLORS, useTh
 import { useStore } from '../store/useStore';
 import { useUIPrefs } from '../store/useUIPrefs';
 import { todayKey } from '../lib/dates';
-import { occursOn, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
+import { occursOn, isRecurring, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
 
 export type Route =
   | 'tasks'
@@ -142,15 +142,13 @@ export function HomeScreen({
         if (t.important) important += 1;
         if (t.categoryId && perCat[t.categoryId] !== undefined) perCat[t.categoryId] += 1;
       }
-      // Mirror MyDayScreen: today's pending occurrences plus overdue
-      // one-shot pending tasks (skipped when the user has hidden overdue).
-      // The `occursToday` branch handles recurring tasks that hit today; the
-      // overdue branch only fires for occurrences that fall before today
-      // (recurring tasks roll forward, so they never linger as overdue).
-      const occursToday = occursOn(t, today);
-      if (occursToday && occurrenceStatus(t, today) === 'pending') {
-        myDay += 1;
-      } else if (!hideOverdue && occ < today && isOpen) {
+      // Mirror MyDayScreen: pending tasks whose target date is today (or recurring
+      // tasks due today), plus overdue non-recurring pending tasks whose target
+      // date has passed (skipped when the user has hidden the overdue group).
+      const inMyDayToday = t.targetDate === today || (isRecurring(t) && occursOn(t, today));
+      if (inMyDayToday) {
+        if (isOpen) myDay += 1;
+      } else if (!hideOverdue && !isRecurring(t) && !!t.targetDate && t.targetDate < today && isOpen) {
         myDay += 1;
       }
     }

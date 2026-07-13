@@ -483,7 +483,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'learnplan-store-v3',
-      version: 1,
+      version: 2,
       // Debounced + lazy-serialized storage: coalesces bursts of mutations
       // (typing, drag-reorder, undo/redo) into one JSON.stringify + write
       // per ~250ms window. Flushes synchronously on web/Electron unload.
@@ -492,11 +492,21 @@ export const useStore = create<State>()(
       migrate: (persisted: any, _version: number) => {
         if (persisted && Array.isArray(persisted.tasks)) {
           persisted.tasks = persisted.tasks.map((t: any) => {
-            if (t && t.reminder && !t.reminders) {
-              const { reminder, ...rest } = t;
-              return { ...rest, reminders: [reminder] };
+            let next = t;
+            // v1: fold a legacy single `reminder` into the `reminders` array.
+            if (next && next.reminder && !next.reminders) {
+              const { reminder, ...rest } = next;
+              next = { ...rest, reminders: [reminder] };
             }
-            return t;
+            // v2: backfill a target date from the scheduled date so tasks created
+            // before My Day switched to target-date filtering keep surfacing there.
+            // Recurring tasks are skipped — they have no per-occurrence target date
+            // and keep appearing in My Day via their recurrence instead.
+            if (next && !next.targetDate && next.date) {
+              const recurring = (next.recurrence && next.recurrence !== 'none') || !!next.recurrenceRule;
+              if (!recurring) next = { ...next, targetDate: next.date };
+            }
+            return next;
           });
         }
         return persisted;

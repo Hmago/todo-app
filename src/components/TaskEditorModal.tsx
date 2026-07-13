@@ -14,6 +14,7 @@ import { radius, spacing, useTheme, useThemedStyles, Palette } from '../theme';
 import { Button, Chip, Label } from './ui';
 import { AppModal } from './AppModal';
 import { DateTimeField } from './DateTimeField';
+import { TimeSelect } from './TimeSelect';
 import { todayKey, prettyReminder } from '../lib/dates';
 import { WEEKDAY_ABBR } from '../lib/recurrence';
 import { uid } from '../lib/id';
@@ -65,6 +66,7 @@ export function TaskEditorModal({
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(todayKey());
+  const [time, setTime] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
   const [recurrence, setRecurrence] = useState<RecurrenceFreq>('none');
@@ -93,6 +95,7 @@ export function TaskEditorModal({
       setTitle(editing.title);
       setNotes(editing.notes ?? '');
       setDate(editing.date);
+      setTime(editing.time ?? '');
       setTargetDate(editing.targetDate ?? '');
       setPriority(editing.priority);
       setRecurrence(editing.recurrence);
@@ -118,7 +121,8 @@ export function TaskEditorModal({
       setTitle('');
       setNotes('');
       setDate(seed?.date ?? todayKey());
-      setTargetDate('');
+      setTime('');
+      setTargetDate(seed?.date ?? todayKey());
       setPriority('medium');
       setRecurrence('none');
       setCategoryId(seed?.categoryId);
@@ -229,7 +233,7 @@ export function TaskEditorModal({
       startDate: undefined,
       targetDate: targetDate.trim() || undefined,
       allDay: undefined,
-      time: undefined,
+      time: time.trim() || undefined,
       estimateMinutes,
       priority,
       recurrence: rule ? 'none' : recurrence,
@@ -346,17 +350,30 @@ export function TaskEditorModal({
             <Label>Date</Label>
             <DateTimeField mode="date" value={date} onChange={setDate} style={styles.input} />
 
-            <Label>Target date</Label>
-            <DateTimeField
-              mode="date"
-              value={targetDate}
-              onChange={setTargetDate}
-              placeholder="yyyy-mm-dd (optional)"
-              style={styles.input}
-            />
-            {targetDate ? (
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateCol}>
+                <Label>Target date</Label>
+                <DateTimeField
+                  mode="date"
+                  value={targetDate}
+                  onChange={setTargetDate}
+                  placeholder="yyyy-mm-dd (optional)"
+                  style={styles.input}
+                />
+              </View>
+              <View style={styles.timeCol}>
+                <Label>Time (optional)</Label>
+                <TimeSelect value={time} onChange={setTime} />
+              </View>
+            </View>
+            {targetDate || time ? (
               <View style={styles.rowWrap}>
-                <Chip label="Clear" color={colors.danger} onPress={() => setTargetDate('')} />
+                {targetDate ? (
+                  <Chip label="Clear date" color={colors.danger} onPress={() => setTargetDate('')} />
+                ) : null}
+                {time ? (
+                  <Chip label="Clear time" color={colors.danger} onPress={() => setTime('')} />
+                ) : null}
               </View>
             ) : null}
 
@@ -648,6 +665,9 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   reminderPillX: { color: colors.primary, fontSize: 12, opacity: 0.8 },
   customRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(1), marginBottom: spacing(1) },
   customReminderField: { flex: 1 },
+  dateTimeRow: { flexDirection: 'row', gap: spacing(1.5) },
+  dateCol: { flex: 2 },
+  timeCol: { flex: 1 },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing(1) },
   subRow: {
     flexDirection: 'row',

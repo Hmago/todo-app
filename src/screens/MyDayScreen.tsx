@@ -6,7 +6,7 @@ import { useUIPrefs } from '../store/useUIPrefs';
 import { TaskListView, ListItem } from '../components/TaskListView';
 import { Tooltip } from '../components/Tooltip';
 import { todayKey } from '../lib/dates';
-import { occursOn, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
+import { occursOn, isRecurring, occurrenceStatus, currentOccurrenceKey } from '../lib/recurrence';
 import { quickAddToTask } from '../lib/quickAdd';
 import { listThemes, radius, spacing, fontFamily, useTheme } from '../theme';
 import { format } from 'date-fns';
@@ -31,29 +31,34 @@ export function MyDayScreen() {
   const accent = listThemes.myday.accent;
 
   const { items, overdueCount } = useMemo(() => {
-    // Today's scheduled occurrences (including recurring tasks that hit today).
+    // Tasks to focus on today: those whose target date is today, plus recurring
+    // tasks that fall due today. Recurrence has no per-occurrence target date, so
+    // it keeps driving My Day for repeats (daily/weekly/monthly + custom rules).
+    // Each row's dateKey stays anchored to the task's own occurrence so its
+    // completion state stays consistent with every other screen.
     const todayItems = tasks
-      .filter((t) => occursOn(t, today))
+      .filter((t) => t.targetDate === today || (isRecurring(t) && occursOn(t, today)))
       .sort((a, b) => {
         const ao = a.order ?? Number.MAX_SAFE_INTEGER;
         const bo = b.order ?? Number.MAX_SAFE_INTEGER;
         if (ao !== bo) return ao - bo;
         return (a.time ?? '99:99').localeCompare(b.time ?? '99:99');
       })
-      .map<ListItem>((task) => ({ task, dateKey: today }));
+      .map<ListItem>((task) => ({ task, dateKey: currentOccurrenceKey(task, today) }));
 
-    // Overdue pending tasks: their current occurrence falls before today and is
-    // still pending. For recurring tasks the current occurrence rolls forward to
-    // today / the next due date, so they never linger here on a stale anchor —
-    // they show under "Today" (or on their next due day) instead.
+    // Overdue tasks: non-recurring tasks whose target date has already passed and
+    // that are still pending. Recurring tasks are excluded — they roll forward and
+    // resurface under "today" on their next due date instead of lingering here.
+    // The 🎯 target-date badge (always rendered by the row) surfaces the missed
+    // deadline, so no extra date badge is needed here.
     const overdueItems = tasks
+      .filter((t) => !isRecurring(t) && !!t.targetDate && t.targetDate < today)
       .map((task) => ({ task, occ: currentOccurrenceKey(task, today) }))
-      .filter(({ task, occ }) => occ < today && occurrenceStatus(task, occ) === 'pending')
-      .sort((a, b) => a.occ.localeCompare(b.occ))
+      .filter(({ task, occ }) => occurrenceStatus(task, occ) === 'pending')
+      .sort((a, b) => (a.task.targetDate ?? '').localeCompare(b.task.targetDate ?? ''))
       .map<ListItem>(({ task, occ }) => ({
         task,
         dateKey: occ,
-        showDate: true,
         groupLabel: 'Overdue',
       }));
 

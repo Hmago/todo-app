@@ -192,9 +192,11 @@ export function quickAddToTask(
   categories: Category[] = [],
 ): Omit<Task, 'id' | 'createdAt' | 'completedDates'> {
   const p = parseQuickAdd(input, categories);
+  const date = p.date ?? base.date;
   return {
     title: p.title,
-    date: p.date ?? base.date,
+    date,
+    targetDate: date,
     time: p.time,
     allDay: p.time ? false : undefined,
     priority: p.priority ?? 'medium',

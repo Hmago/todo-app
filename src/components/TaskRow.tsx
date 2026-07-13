@@ -199,11 +199,15 @@ function TaskRowImpl({
   // store for unchanged tasks, so this keys cleanly on `task`.)
   const meta = useMemo(() => {
     const m: string[] = [];
+    const timeLabel = !task.allDay && task.time ? pretty12h(task.time) : '';
     if (showDate) m.push(prettyDate(dateKey));
     if (task.startDate && task.startDate !== task.date) m.push(`Starts ${prettyDate(task.startDate)}`);
-    if (task.targetDate) m.push(`🎯 ${prettyDate(task.targetDate)}`);
+    if (task.targetDate) {
+      m.push(timeLabel ? `🎯 ${prettyDate(task.targetDate)}, ${timeLabel}` : `🎯 ${prettyDate(task.targetDate)}`);
+    } else if (timeLabel) {
+      m.push(timeLabel);
+    }
     if (task.allDay) m.push('All-day');
-    else if (task.time) m.push(pretty12h(task.time));
     const recLabel = recurrenceLabel(task);
     if (recLabel) m.push(recLabel);
     if (task.links && task.links.length > 0) m.push(`🔗 ${task.links.length}`);
